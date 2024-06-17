@@ -1,32 +1,27 @@
 package com.joshlong.mogul.api.ai;
 
-import org.springframework.ai.chat.ChatClient;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.image.ImageMessage;
+import org.springframework.ai.image.ImageModel;
+import org.springframework.ai.image.ImageOptionsBuilder;
+import org.springframework.ai.image.ImagePrompt;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.web.client.RestTemplate;
 
+import java.net.MalformedURLException;
 import java.util.UUID;
 
 class DefaultAiClient implements AiClient {
 
-	private static final String OPENAI_API_IMAGES_URL = "https://api.openai.com/v1/images/generations";
-
-	private final RestTemplate restTemplate;
+	private final ImageModel imageModel;
 
 	private final ChatClient aiClient;
 
-	private final String openaiApiKey;
-
 	private final TranscriptionClient transcriptionClient;
 
-	DefaultAiClient(RestTemplate restTemplate, ChatClient aiClient, String openaiApiKey,
-			TranscriptionClient transcriptionClient) {
-		this.restTemplate = restTemplate;
+	DefaultAiClient(ImageModel imageModel, ChatClient aiClient, TranscriptionClient transcriptionClient) {
+		this.imageModel = imageModel;
 		this.aiClient = aiClient;
-		this.openaiApiKey = openaiApiKey;
 		this.transcriptionClient = transcriptionClient;
 	}
 
@@ -37,25 +32,22 @@ class DefaultAiClient implements AiClient {
 
 	@Override
 	public String chat(String prompt) {
-		return this.aiClient.call(prompt);
+		return this.aiClient.prompt().user(prompt).call().content();
 	}
 
 	@Override
 	public Resource render(String prompt, ImageSize imageSize) {
-		var headers = new HttpHeaders();
-		headers.setContentType(MediaType.APPLICATION_JSON);
-		headers.set("Authorization", "Bearer " + openaiApiKey);
-
-		var request = new ImageGenerationRequest("dall-e-3", prompt, 1, imageSize.value());
-		var entity = new HttpEntity<>(request, headers);
-		var response = restTemplate.postForEntity(OPENAI_API_IMAGES_URL, entity, ImageGenerationResponse.class);
-		var igr = response.getBody();
-		if (igr != null && igr.data() != null && !igr.data().isEmpty()) {
-			var img = igr.data().getFirst();
-			var url = img.url();
-			return new UrlResource(url);
+		try {
+			var imageOptions = ImageOptionsBuilder.builder()
+				.withWidth(imageSize.width())
+				.withWidth(imageSize.height())
+				.build();
+			var imageResponse = this.imageModel.call(new ImagePrompt(new ImageMessage(prompt), imageOptions));
+			return new UrlResource(imageResponse.getResult().getOutput().getUrl());
+		} //
+		catch (MalformedURLException e) {
+			throw new RuntimeException(e);
 		}
-		throw new IllegalStateException("couldn't generate an image given prompt [" + prompt + "]");
 	}
 
 }
