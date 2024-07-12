@@ -1,7 +1,5 @@
-package com.joshlong.mogul.api;
+package com.joshlong.mogul.api.managedfiles;
 
-import com.joshlong.mogul.api.managedfiles.ManagedFile;
-import com.joshlong.mogul.api.managedfiles.ManagedFileDeletionRequest;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;

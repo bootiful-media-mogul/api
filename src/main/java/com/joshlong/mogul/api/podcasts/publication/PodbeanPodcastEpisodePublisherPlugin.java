@@ -1,6 +1,6 @@
 package com.joshlong.mogul.api.podcasts.publication;
 
-import com.joshlong.mogul.api.ManagedFileService;
+import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.managedfiles.CommonMediaTypes;
 import com.joshlong.mogul.api.podcasts.Episode;
 import com.joshlong.mogul.api.utils.FileUtils;
@@ -62,8 +62,8 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 
 	@Override
 	public void publish(Map<String, String> context, Episode payload) {
-		log.debug("publishing to podbean with context [" + context + "] and payload [" + payload
-				+ "]. produced audio is [" + payload.producedAudio() + "]");
+		log.debug("publishing to podbean with context [{}] and payload [{}]. produced audio is [{}]", context, payload,
+				payload.producedAudio());
 		// todo some sort of thread local in which to stash the context
 		// to make it available to the multitenant TokenProvider
 
@@ -73,14 +73,14 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 				FileUtils.tempFileWithExtension("jpg"));
 
 		var producedAudioAuthorization = this.podbeanClient.upload(CommonMediaTypes.MP3, tempProducedAudioFile);
-		log.debug("got the podcast audio authorization: " + producedAudioAuthorization);
+		log.debug("got the podcast audio authorization: {}", producedAudioAuthorization);
 		var producedGraphicAuthorization = this.podbeanClient.upload(CommonMediaTypes.JPG, tempGraphicFile);
 
 		var podbeanEpisode = this.podbeanClient.publishEpisode(payload.title(), payload.description(),
 				EpisodeStatus.DRAFT, EpisodeType.PUBLIC, producedAudioAuthorization.getFileKey(),
 				producedGraphicAuthorization.getFileKey());
 
-		log.debug("published episode to podbean: [" + podbeanEpisode + "]");
+		log.debug("published episode to podbean: [{}]", podbeanEpisode);
 
 	}
 
@@ -98,7 +98,7 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 
 	@Override
 	public void unpublish(Map<String, String> context, Episode payload) {
-		log.debug("un-publishing to podbean with context [" + context + "] and payload [" + payload + "]");
+		log.debug("un-publishing to podbean with context [{}] and payload [{}]", context, payload);
 	}
 
 }

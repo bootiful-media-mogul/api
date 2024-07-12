@@ -1,8 +1,8 @@
 package com.joshlong.mogul.api.podcasts.production;
 
 import com.joshlong.mogul.api.ApiProperties;
-import com.joshlong.mogul.api.ManagedFileService;
-import com.joshlong.mogul.api.PodcastService;
+import com.joshlong.mogul.api.managedfiles.ManagedFileService;
+import com.joshlong.mogul.api.podcasts.PodcastService;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.podcasts.Episode;
 import com.joshlong.mogul.api.utils.IntegrationUtils;
@@ -161,7 +161,7 @@ class ProductionIntegrationFlowConfiguration {
 
 	private ManagedFile doWrite(String episodeIdHeaderName, PodcastService podcastService,
 			ManagedFileService managedFileService, Map<String, Object> headers, String s3Uri) {
-		log.debug("got the following S3 URI from the AMQP processor: " + s3Uri);
+		log.debug("got the following S3 URI from the AMQP processor: {}", s3Uri);
 		var episodeIdValue = headers.get(episodeIdHeaderName);
 		var episodeId = episodeIdValue instanceof String episodeIdString ? //
 				Long.parseLong(episodeIdString)//

@@ -1,7 +1,6 @@
 package com.joshlong.mogul.api.managedfiles;
 
-import com.joshlong.mogul.api.ManagedFileService;
-import com.joshlong.mogul.api.MogulService;
+import com.joshlong.mogul.api.mogul.Mogul;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
@@ -25,11 +24,9 @@ class ManagedFileController {
 
 	private final ManagedFileService managedFileService;
 
-	private final MogulService mogulService;
 
-	ManagedFileController(ManagedFileService managedFileService, MogulService mogulService) {
+	ManagedFileController(ManagedFileService managedFileService ) {
 		this.managedFileService = managedFileService;
-		this.mogulService = mogulService;
 	}
 
 	@QueryMapping
@@ -45,7 +42,7 @@ class ManagedFileController {
 		Assert.notNull(mf, "the managed file does not exist [" + id + "]");
 		var read = managedFileService.read(id);
 		var contentType = mf.contentType();
-		log.debug("content-type: " + contentType);
+		log.debug("content-type: {}", contentType);
 		return ResponseEntity.ok()
 			.contentLength(mf.size())
 			.contentType(MediaType.parseMediaType(contentType))
@@ -56,17 +53,17 @@ class ManagedFileController {
 	@PostMapping(MF_RW_URL)
 	Map<String, Object> write(@PathVariable Long id, @RequestParam MultipartFile file) {
 		Assert.notNull(id, "the id should not be null");
-		var mogul = this.mogulService.getCurrentMogul();
+		var mogul =  (Mogul) null ;// this.mogulService.getCurrentMogul(); todo fix this!!
 		var managedFile = this.managedFileService.getManagedFile(id);
 		Assert.notNull(managedFile, "the managed file is null for managed file id [" + id + "]");
 		Assert.state(managedFile.mogulId().equals(mogul.id()),
 				"you're trying to write to an invalid file to which you are not authorized!");
 		var originalFilename = file.getOriginalFilename();
 		var mediaType = CommonMediaTypes.guess(file.getResource());
-		log.debug("guessing the media type for [" + file.getOriginalFilename() + "] is  " + mediaType);
+		log.debug("guessing the media type for [{}] is  {}", file.getOriginalFilename(), mediaType);
 		this.managedFileService.write(managedFile.id(), originalFilename, mediaType, file.getResource());
 		var updated = managedFileService.getManagedFile(managedFile.id());
-		log.debug("finished writing managed file [" + id + "] to s3: " + originalFilename + ":" + updated.toString());
+		log.debug("finished writing managed file [{}] to s3: {}:{}", id, originalFilename, updated.toString());
 		return Map.of("managedFileId", id);
 	}
 

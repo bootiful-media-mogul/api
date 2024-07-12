@@ -1,9 +1,6 @@
-package com.joshlong.mogul.api;
+package com.joshlong.mogul.api.podcasts;
 
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
-import com.joshlong.mogul.api.podcasts.Episode;
-import com.joshlong.mogul.api.podcasts.Podcast;
-import com.joshlong.mogul.api.podcasts.Segment;
 
 import java.util.Collection;
 import java.util.List;

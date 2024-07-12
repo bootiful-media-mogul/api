@@ -1,6 +1,5 @@
-package com.joshlong.mogul.api;
+package com.joshlong.mogul.api.mogul;
 
-import com.joshlong.mogul.api.settings.Settings;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -27,24 +26,18 @@ class DefaultMogulService implements MogulService {
 
 	private final static String PODBEAN_ACCOUNTS_SETTINGS_CLIENT_SECRET = "client-secret";
 
-	//
 	private final JdbcClient db;
 
 	private final TransactionTemplate transactionTemplate;
 
 	private final ApplicationEventPublisher publisher;
 
-	private final Settings settings;
-
 	private final MogulRowMapper mogulRowMapper = new MogulRowMapper();
 
-	DefaultMogulService(JdbcClient jdbcClient, TransactionTemplate transactionTemplate,
-			ApplicationEventPublisher publisher, Settings settings) {
+	DefaultMogulService(JdbcClient jdbcClient, TransactionTemplate transactionTemplate, 	ApplicationEventPublisher publisher) {
 		this.db = jdbcClient;
 		this.transactionTemplate = transactionTemplate;
 		this.publisher = publisher;
-		this.settings = settings;
-		Assert.notNull(this.settings, "the settings are null");
 		Assert.notNull(this.db, "the db is null");
 		Assert.notNull(this.transactionTemplate, "the transactionTemplate is null");
 	}

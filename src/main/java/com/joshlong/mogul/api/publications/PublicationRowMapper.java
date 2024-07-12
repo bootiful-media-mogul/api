@@ -32,7 +32,7 @@ class PublicationRowMapper implements RowMapper<Publication> {
 			return Class.forName(name);
 		}
 		catch (ClassNotFoundException e) {
-			log.warn("classNotFoundException when trying to do Class.forName(" + name + ") ", e);
+			log.warn("classNotFoundException when trying to do Class.forName({}) ", name, e);
 		}
 		return null;
 	}

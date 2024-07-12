@@ -5,7 +5,7 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>3.3.0</version>
+		<version>3.3.1</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.joshlong.mogul</groupId>
@@ -16,7 +16,7 @@
 		<java.version>21</java.version>
 		<spring-ai.version>1.0.0-M1</spring-ai.version>
 		<spring-cloud.version>2023.0.2</spring-cloud.version>
-		<spring-modulith.version>1.2.0</spring-modulith.version>
+		<spring-modulith.version>1.2.1</spring-modulith.version>
 	</properties>
 	<dependencies>
 		<dependency>

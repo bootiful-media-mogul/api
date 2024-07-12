@@ -1,7 +1,5 @@
 package com.joshlong.mogul.api.managedfiles;
 
-import com.joshlong.mogul.api.ManagedFileService;
-import com.joshlong.mogul.api.Storage;
 import com.joshlong.mogul.api.utils.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +21,7 @@ import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Collection;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -58,9 +57,9 @@ class DefaultManagedFileService implements ManagedFileService {
 		this.db.sql("update managed_file set filename =?, content_type =? , written = true , size =? where id=?")
 			.params(filename, clientMediaType.toString(), contentLength(resource), managedFileId)
 			.update();
-		log.debug("are we uploading on a virtual thread? " + Thread.currentThread().isVirtual());
+		log.debug("are we uploading on a virtual thread? {}", Thread.currentThread().isVirtual());
 		var freshManagedFile = getManagedFile(managedFileId);
-		log.debug("managed file has been written? " + freshManagedFile.written());
+		log.debug("managed file has been written? {}", freshManagedFile.written());
 		this.publisher.publishEvent(new ManagedFileUpdatedEvent(freshManagedFile));
 	}
 
@@ -76,9 +75,9 @@ class DefaultManagedFileService implements ManagedFileService {
 		var tmp = FileUtils.tempFileWithExtension();
 		try {
 			try (var in = (resource.getInputStream()); var out = (new FileOutputStream(tmp))) {
-				log.debug("starting download to local file [" + tmp.getAbsolutePath() + "]");
+				log.debug("starting download to local file [{}]", tmp.getAbsolutePath());
 				FileCopyUtils.copy(in, out);
-				log.debug("finished download to local file [" + tmp.getAbsolutePath() + "]");
+				log.debug("finished download to local file [{}]", tmp.getAbsolutePath());
 			} //
 			this.write(managedFile.id(), managedFile.filename(), CommonMediaTypes.MP3, tmp);
 		} //
@@ -91,7 +90,7 @@ class DefaultManagedFileService implements ManagedFileService {
 			FileUtils.delete(tmp);
 		}
 		var mf = this.getManagedFile(managedFileId);
-		log.debug("refreshed managed file " + mf);
+		log.debug("refreshed managed file {}", mf);
 	}
 
 	@Override
@@ -118,7 +117,7 @@ class DefaultManagedFileService implements ManagedFileService {
 			.param(managedFileDeletionRequestId)
 			.update();
 		var managedFileDeletionRequest = getManagedFileDeletionRequest(managedFileDeletionRequestId);
-		log.debug("completed [" + managedFileDeletionRequest + "]");
+		log.debug("completed [{}]", managedFileDeletionRequest);
 	}
 
 	@Override
@@ -165,8 +164,8 @@ class DefaultManagedFileService implements ManagedFileService {
 				""")
 			.params(UUID.randomUUID().toString(), mogulId, bucket, folder, fileName, size, mediaType.toString())
 			.update(kh);
-		log.info("the bucket is [" + bucket + "]");
-		return getManagedFile(((Number) kh.getKeys().get("id")).longValue());
+		log.info("the bucket is [{}]", bucket);
+		return getManagedFile(((Number) Objects.requireNonNull(kh.getKeys()).get("id")).longValue());
 	}
 
 }

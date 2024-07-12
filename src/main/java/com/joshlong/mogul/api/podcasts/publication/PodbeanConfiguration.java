@@ -1,7 +1,8 @@
 package com.joshlong.mogul.api.podcasts.publication;
 
-import com.joshlong.mogul.api.MogulService;
-import com.joshlong.mogul.api.settings.Settings;
+import com.joshlong.mogul.api.mogul.MogulService;
+import com.joshlong.mogul.api.mogul.Mogul;
+import com.joshlong.mogul.api.Settings;
 import com.joshlong.podbean.token.ClientCredentialsTokenProvider;
 import com.joshlong.podbean.token.Token;
 import com.joshlong.podbean.token.TokenProvider;
@@ -23,7 +24,7 @@ import org.springframework.util.Assert;
  * {@link TokenProvider tp} based on the configuration stipulated at design time.
  * <p>
  * This is a multi-tenant implementation that is aware of the currently signed in
- * {@link com.joshlong.mogul.api.Mogul }.
+ * {@link Mogul }.
  */
 @Configuration
 @ImportRuntimeHints(PodbeanConfiguration.Hints.class)
@@ -87,8 +88,8 @@ class PodbeanConfiguration {
 			var clientSecret = settingsForTenant.get("clientSecret").value();
 			Assert.hasText(clientId, "the podbean clientId for mogul [" + mogulId + "] is empty");
 			Assert.hasText(clientSecret, "the podbean clientSecret for mogul [" + mogulId + "] is empty");
-			log.debug("returning podbean " + ClientCredentialsTokenProvider.class.getName() + " for mogul ["
-					+ currentMogul.username() + "]");
+			log.debug("returning podbean {} for mogul [{}]", ClientCredentialsTokenProvider.class.getName(),
+					currentMogul.username());
 			return new ClientCredentialsTokenProvider(clientId, clientSecret).getToken();
 		}
 

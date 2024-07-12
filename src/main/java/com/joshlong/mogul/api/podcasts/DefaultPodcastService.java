@@ -1,9 +1,8 @@
 package com.joshlong.mogul.api.podcasts;
 
-import com.joshlong.mogul.api.ManagedFileService;
-import com.joshlong.mogul.api.MogulCreatedEvent;
-import com.joshlong.mogul.api.MogulService;
-import com.joshlong.mogul.api.PodcastService;
+import com.joshlong.mogul.api.managedfiles.ManagedFileService;
+import com.joshlong.mogul.api.mogul.MogulCreatedEvent;
+import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.managedfiles.CommonMediaTypes;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.managedfiles.ManagedFileUpdatedEvent;
@@ -116,7 +115,7 @@ class DefaultPodcastService implements PodcastService {
 		var written = (episode.graphic().written() && episode.producedGraphic().written()) && !segments.isEmpty()
 				&& (segments.stream().allMatch(se -> se.audio().written() && se.producedAudio().written()));
 
-		log.debug("written? " + written);
+		log.debug("written? {}", written);
 		this.db.sql("update podcast_episode set complete = ? where id = ? ").params(written, episode.id()).update();
 		var episodeById = this.getEpisodeById(episode.id());
 		for (var e : Set.of(new PodcastEpisodeUpdatedEvent(episodeById),
@@ -222,7 +221,7 @@ class DefaultPodcastService implements PodcastService {
 	}
 
 	private void updateEpisodeSegmentOrder(Long episodeSegmentId, int order) {
-		log.info("updating podcast_episode_segment [" + episodeSegmentId + "] to sequence_number : " + order);
+		log.info("updating podcast_episode_segment [{}] to sequence_number : {}", episodeSegmentId, order);
 		this.db.sql("update podcast_episode_segment set sequence_number = ? where id = ?")
 			.params(order, episodeSegmentId)
 			.update();
@@ -239,8 +238,8 @@ class DefaultPodcastService implements PodcastService {
 		var positionOfSegment = segments.indexOf(segment);
 		var newPositionOfSegment = positionOfSegment + position;
 
-		log.debug("current:" + positionOfSegment);
-		log.debug("new:" + newPositionOfSegment);
+		log.debug("current:{}", positionOfSegment);
+		log.debug("new:{}", newPositionOfSegment);
 
 		if (newPositionOfSegment < 0 || newPositionOfSegment > (segments.size() - 1)) {
 			log.debug("you're trying to move out of bounds");
@@ -431,7 +430,7 @@ class DefaultPodcastService implements PodcastService {
 			this.db.sql("update podcast_episode set produced_audio_updated=? where id=? ")
 				.params(new Date(), episodeId)
 				.update();
-			log.debug("updated episode " + episodeId + " to have non-null produced_audio_updated");
+			log.debug("updated episode {} to have non-null produced_audio_updated", episodeId);
 			return this.getEpisodeById(episodeId);
 		} //
 		catch (Throwable throwable) {

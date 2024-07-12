@@ -1,7 +1,8 @@
 package com.joshlong.mogul.api.notifications;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.joshlong.mogul.api.MogulService;
+import com.joshlong.mogul.api.mogul.MogulService;
+import com.joshlong.mogul.api.mogul.Mogul;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -20,7 +21,7 @@ class NotificationsController {
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	/**
-	 * mapping between {@link com.joshlong.mogul.api.Mogul mogul} ID and a given SSE
+	 * mapping between {@link Mogul mogul} ID and a given SSE
 	 * emitter
 	 */
 	private final Map<Long, SseEmitter> sseSessions = new ConcurrentHashMap<>();
@@ -52,7 +53,7 @@ class NotificationsController {
 		for (var loggedInMogulId : this.sseSessions.keySet()) {
 			var deliverToThisMogul = notification.mogulId() == null || (loggedInMogulId.equals(notification.mogulId()));
 			if (deliverToThisMogul) {
-				log.debug("got a notification for this Mogul # " + mogulId + "::" + notification);
+				log.debug("got a notification for this Mogul # {}::{}", mogulId, notification);
 				var sse = this.sseSessions.get(loggedInMogulId);
 				deliver(this.objectMapper, sse, notification);
 			}

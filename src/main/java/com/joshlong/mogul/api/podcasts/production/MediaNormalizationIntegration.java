@@ -1,12 +1,11 @@
 package com.joshlong.mogul.api.podcasts.production;
 
-import com.joshlong.mogul.api.ManagedFileService;
+import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.managedfiles.CommonMediaTypes;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.integration.core.GenericHandler;
 import org.springframework.integration.dsl.DirectChannelSpec;

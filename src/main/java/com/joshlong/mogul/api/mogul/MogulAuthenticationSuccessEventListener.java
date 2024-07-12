@@ -1,4 +1,4 @@
-package com.joshlong.mogul.api;
+package com.joshlong.mogul.api.mogul;
 
 import org.springframework.context.ApplicationListener;
 import org.springframework.security.authentication.event.AuthenticationSuccessEvent;

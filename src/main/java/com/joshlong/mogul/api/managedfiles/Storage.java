@@ -1,4 +1,4 @@
-package com.joshlong.mogul.api;
+package com.joshlong.mogul.api.managedfiles;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -7,23 +7,18 @@ import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 import org.springframework.util.unit.DataSize;
-import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
-import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 
 import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.IOException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.Objects;
 
 @Component
-public class Storage {
+class Storage {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -68,7 +63,7 @@ public class Storage {
 			var buffer = new byte[chunkSize];
 			var bytesRead = -1;
 			while ((bytesRead = inputStream.read(buffer)) > 0) {
-				log.debug("uploading to part [" + partNumber + "]");
+				log.debug("uploading to part [{}]", partNumber);
 				var actualBytes = bytesRead == chunkSize ? buffer : Arrays.copyOf(buffer, bytesRead);
 				var uploadPartRequest = UploadPartRequest.builder()
 					.bucket(bucketName)
@@ -113,8 +108,8 @@ public class Storage {
 	public void write(String bucket, String objectName, Resource resource) {
 		try {
 			var largeFile = DataSize.ofMegabytes(10);
-			log.debug("started executing an S3 PUT for [" + bucket + '/' + objectName + "] on thread ["
-					+ Thread.currentThread() + "]");
+			log.debug("started executing an S3 PUT for [{}/{}] on thread [{}]", bucket, objectName,
+					Thread.currentThread());
 			ensureBucketExists(bucket);
 			doWriteForLargeFiles(bucket, objectName, resource, largeFile);
 		} //
@@ -135,11 +130,11 @@ public class Storage {
 	private void ensureBucketExists(String bucketName) {
 		try {
 			if (!bucketExists(bucketName)) {
-				log.info("attempting to create the bucket called [" + bucketName + "]");
+				log.info("attempting to create the bucket called [{}]", bucketName);
 				s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
 			}
 			else {
-				log.debug("the bucket named [" + bucketName + "] already exists");
+				log.debug("the bucket named [{}] already exists", bucketName);
 			}
 		} //
 		catch (Throwable throwable) {
@@ -154,7 +149,7 @@ public class Storage {
 			return new InputStreamResource(new BufferedInputStream(inputStream));
 		}
 		catch (Throwable throwable) {
-			log.warn("error when reading bucket [" + bucket + "] and object name [" + objectName + "] from S3");
+			log.warn("error when reading bucket [{}] and object name [{}] from S3", bucket, objectName);
 			return null;
 		}
 	}

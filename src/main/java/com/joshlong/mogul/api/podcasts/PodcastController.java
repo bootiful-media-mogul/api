@@ -1,11 +1,10 @@
 package com.joshlong.mogul.api.podcasts;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.joshlong.mogul.api.MogulService;
-import com.joshlong.mogul.api.PodcastService;
+import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.podcasts.publication.PodcastEpisodePublisherPlugin;
 import com.joshlong.mogul.api.publications.PublicationService;
-import com.joshlong.mogul.api.settings.Settings;
+import com.joshlong.mogul.api.Settings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.graphql.data.method.annotation.Argument;
@@ -163,8 +162,8 @@ class PodcastController {
 		var mogul = episode.podcast().mogulId();
 		var publication = this.publicationService.publish(mogul, episode, new HashMap<>(),
 				this.plugins.get(pluginName));
-		log.debug("finished publishing [" + episode + "] with plugin [" + pluginName + "] and got publication ["
-				+ publication + "] ");
+		log.debug("finished publishing [{}] with plugin [{}] and got publication [{}] ", episode, pluginName,
+				publication);
 		return true;
 	}
 
@@ -194,7 +193,7 @@ class PodcastController {
 	// mechanism!
 	@GetMapping("/podcasts/{podcastId}/episodes/{episodeId}/completions")
 	SseEmitter streamPodcastEpisodeCompletionEvents(@PathVariable Long podcastId, @PathVariable Long episodeId) {
-		log.debug("creating SSE watchdog for episode [" + episodeId + "]");
+		log.debug("creating SSE watchdog for episode [{}]", episodeId);
 		var peEmitter = new PodcastEpisodeSseEmitter(podcastId, episodeId, new SseEmitter());
 		var episode = this.podcastService.getEpisodeById(episodeId);
 		Assert.notNull(episode, "the episode is null");
@@ -206,10 +205,10 @@ class PodcastController {
 		if (!this.episodeCompleteEventSseEmitters.containsKey(episodeId)) {
 			this.episodeCompleteEventSseEmitters.put(episodeId, peEmitter);
 		}
-		log.debug("installing an SseEmitter for episode [" + episode + "]");
+		log.debug("installing an SseEmitter for episode [{}]", episode);
 		var cleanup = (Runnable) () -> {
 			this.episodeCompleteEventSseEmitters.remove(episodeId);
-			log.info("removing sse listener for episode [" + episodeId + "]");
+			log.info("removing sse listener for episode [{}]", episodeId);
 		};
 		peEmitter.sseEmitter().onCompletion(cleanup);
 		peEmitter.sseEmitter().onTimeout(cleanup);
@@ -220,12 +219,12 @@ class PodcastController {
 	void broadcastPodcastEpisodeCompletionEventToClients(PodcastEpisodeCompletionEvent podcastEpisodeCompletionEvent) {
 		var episode = podcastEpisodeCompletionEvent.episode();
 		var id = episode.id();
-		log.debug("going to send an event to the" + " clients listening for episode [" + id + "]");
+		log.debug("going to send an event to the clients listening for episode [{}]", id);
 
 		var emitter = this.episodeCompleteEventSseEmitters.get(id);
 
 		if (null == emitter) {
-			log.warn("could not find an emitter for episode [" + id + "]");
+			log.warn("could not find an emitter for episode [{}]", id);
 			return;
 		}
 
@@ -233,10 +232,10 @@ class PodcastController {
 			var map = Map.of("id", id, "complete", episode.complete());
 			var json = om.writeValueAsString(map);
 			emitter.sseEmitter().send(json, MediaType.APPLICATION_JSON);
-			log.debug("sent an event to clients listening for " + episode);
+			log.debug("sent an event to clients listening for {}", episode);
 		} //
 		catch (Exception e) {
-			log.warn("experienced an exception when trying to emit a podcast completed event via SSE for id # " + id);
+			log.warn("experienced an exception when trying to emit a podcast completed event via SSE for id # {}", id);
 			emitter.sseEmitter().completeWithError(e);
 		} //
 

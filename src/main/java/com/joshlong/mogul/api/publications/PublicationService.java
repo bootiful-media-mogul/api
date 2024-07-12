@@ -1,5 +1,7 @@
 package com.joshlong.mogul.api.publications;
 
+import com.joshlong.mogul.api.PublisherPlugin;
+
 import java.util.Map;
 
 /**

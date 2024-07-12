@@ -43,8 +43,8 @@ class ImageEncoder implements Encoder, ApplicationListener<ApplicationReadyEvent
 					: scale(convertFileToJpeg(path));
 			Assert.state(isValidSize(output),
 					"the output image [" + path.getAbsolutePath() + "] must be of the right file size");
-			log.debug("in: " + path.getAbsolutePath() + System.lineSeparator() + "out: " + output.getAbsolutePath()
-					+ System.lineSeparator());
+			log.debug("in: {}{}out: {}{}", path.getAbsolutePath(), System.lineSeparator(), output.getAbsolutePath(),
+					System.lineSeparator());
 			return output;
 		} //
 		catch (Throwable throwable) {

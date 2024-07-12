@@ -1,4 +1,4 @@
-package com.joshlong.mogul.api;
+package com.joshlong.mogul.api.mogul;
 
 import org.springframework.security.core.Authentication;
 

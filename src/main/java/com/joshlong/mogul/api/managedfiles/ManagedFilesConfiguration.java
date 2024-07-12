@@ -1,6 +1,5 @@
 package com.joshlong.mogul.api.managedfiles;
 
-import com.joshlong.mogul.api.ManagedFileService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.core.MessageSource;

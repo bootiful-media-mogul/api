@@ -1,4 +1,4 @@
-package com.joshlong.mogul.api.settings;
+package com.joshlong.mogul.api;
 
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;

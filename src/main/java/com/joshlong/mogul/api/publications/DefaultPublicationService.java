@@ -1,17 +1,19 @@
 package com.joshlong.mogul.api.publications;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.joshlong.mogul.api.MogulService;
-import com.joshlong.mogul.api.settings.Settings;
+import com.joshlong.mogul.api.PublisherPlugin;
+import com.joshlong.mogul.api.Settings;
+import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.utils.JdbcUtils;
 import com.joshlong.mogul.api.utils.JsonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
 
@@ -19,16 +21,28 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
-@Service
+record SettingsLookup(Long mogulId, String category) {
+}
+
+@Configuration
+class DefaultPublicationServiceConfiguration {
+
+	@Bean
+	DefaultPublicationService defaultPublicationService(JdbcClient client, MogulService mogulService, TextEncryptor textEncryptor, Settings settings, Map<String, PublisherPlugin<?>> plugins, ObjectMapper objectMapper) {
+		return new DefaultPublicationService(client, mogulService, textEncryptor,
+				settingsLookup -> settings.getAllValuesByCategory(settingsLookup.mogulId(), settingsLookup.category()), plugins, objectMapper);
+	}
+
+}
+
 @Transactional
 class DefaultPublicationService implements PublicationService {
 
 	private final Map<String, PublisherPlugin<?>> plugins = new ConcurrentHashMap<>();
 
 	private final JdbcClient db;
-
-	private final Settings settings;
 
 	private final MogulService mogulService;
 
@@ -38,19 +52,23 @@ class DefaultPublicationService implements PublicationService {
 
 	private final TextEncryptor textEncryptor;
 
-	DefaultPublicationService(JdbcClient db, Settings settings, MogulService mogulService, TextEncryptor textEncryptor,
-			Map<String, PublisherPlugin<?>> plugins, ObjectMapper objectMapper) {
+	private final Function<SettingsLookup, Map<String, String>> settingsLookupMapSupplier;
+
+	DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
+							  Function<SettingsLookup, Map<String, String>> settingsLookup,
+							  Map<String, PublisherPlugin<?>> plugins, ObjectMapper objectMapper) {
 		this.db = db;
-		this.settings = settings;
+		this.settingsLookupMapSupplier = settingsLookup;
 		this.mogulService = mogulService;
 		this.textEncryptor = textEncryptor;
 		this.plugins.putAll(plugins);
+		this.publicationRowMapper = new PublicationRowMapper(objectMapper, textEncryptor);
 		Assert.notNull(this.db, "the JdbcClient must not be null");
 		Assert.notNull(this.mogulService, "the mogulService must not be null");
 		Assert.notNull(this.textEncryptor, "the textEncryptor must not be null");
-		Assert.notNull(this.settings, "the settings must not be null");
+		Assert.notNull(this.settingsLookupMapSupplier, "the settings must not be null");
 		Assert.state(!this.plugins.isEmpty(), "there are no plugins for publication");
-		this.publicationRowMapper = new PublicationRowMapper(objectMapper, textEncryptor);
+		Assert.notNull(this.publicationRowMapper, "the settings must not be null");
 	}
 
 	@Override
@@ -60,13 +78,13 @@ class DefaultPublicationService implements PublicationService {
 		Assert.notNull(plugin, "the plugin must not be null");
 		Assert.notNull(payload, "the payload must not be null");
 		Assert.notNull(mogul, "the mogul should not be null");
-		var configuration = this.settings.getAllValuesByCategory(this.mogulService.getCurrentMogul().id(),
-				plugin.name());
+		var configuration = this.settingsLookupMapSupplier.apply(new SettingsLookup(this.mogulService.getCurrentMogul().id(),
+				plugin.name()));
 		var context = new HashMap<String, String>();
 		context.putAll(configuration);
 		context.putAll(contextAndSettings);
 		plugin.publish(context, payload);
-		log.debug("finished publishing with plugin " + plugin.name() + '.');
+		log.debug("finished publishing with plugin {}.", plugin.name());
 		var contextJson = this.textEncryptor.encrypt(JsonUtils.write(context));
 		var publicationData = this.textEncryptor.encrypt(JsonUtils.write(payload.publicationKey()));
 		var entityClazz = payload.getClass().getName();
@@ -76,7 +94,7 @@ class DefaultPublicationService implements PublicationService {
 			.params(mogulId, plugin.name(), new Date(), null, contextJson, publicationData, entityClazz)
 			.update(kh);
 		var publication = this.getPublicationById(JdbcUtils.getIdFromKeyHolder(kh).longValue());
-		log.debug("writing publication out: " + publication);
+		log.debug("writing publication out: {}", publication);
 		return publication;
 	}
 

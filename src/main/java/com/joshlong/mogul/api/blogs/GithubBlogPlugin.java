@@ -1,6 +1,6 @@
 package com.joshlong.mogul.api.blogs;
 
-import com.joshlong.mogul.api.publications.PublisherPlugin;
+import com.joshlong.mogul.api.PublisherPlugin;
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Component;

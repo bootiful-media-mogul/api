@@ -1,6 +1,6 @@
 package com.joshlong.mogul.api.podcasts.publication;
 
-import com.joshlong.mogul.api.PodcastService;
+import com.joshlong.mogul.api.podcasts.PodcastService;
 import com.joshlong.mogul.api.podcasts.Episode;
 import com.joshlong.mogul.api.podcasts.production.PodcastProducer;
 import org.aopalliance.intercept.MethodInterceptor;
@@ -43,12 +43,13 @@ class ProducingPodcastPublisherPluginBeanPostProcessor implements BeanPostProces
 					var episode = (Episode) invocation.getArguments()[1];
 					var shouldProduceAudio = episode.producedAudioUpdated() == null
 							|| episode.producedAudioUpdated().before(episode.producedAudioAssetsUpdated());
-					log.debug("should produce the audio for episode [" + episode + "] from scratch? ["
-							+ shouldProduceAudio + "]");
+					log.debug("should produce the audio for episode [{}] from scratch? [{}]", episode,
+							shouldProduceAudio);
 					if (shouldProduceAudio) {
 						var producedManagedFile = podcastProducer.produce(episode);
-						log.debug("produced the audio for episode [" + episode + "] from scratch to managedFile: ["
-								+ producedManagedFile + "] using producer [" + podcastProducer + "]");
+						log.debug(
+								"produced the audio for episode [{}] from scratch to managedFile: [{}] using producer [{}]",
+								episode, producedManagedFile, podcastProducer);
 					}
 					var updatedEpisode = podcastService.getEpisodeById(episode.id());
 					Assert.notNull(updatedEpisode.producedAudioUpdated(), "the producedAudioUpdated field is null");

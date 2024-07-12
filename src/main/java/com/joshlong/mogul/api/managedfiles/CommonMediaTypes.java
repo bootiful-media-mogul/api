@@ -18,7 +18,7 @@ public abstract class CommonMediaTypes {
 	public static MediaType guess(Resource resource) {
 		var ct = java.net.URLConnection.guessContentTypeFromName(resource.getFilename());
 		var mt = StringUtils.hasText(ct) ? MediaType.parseMediaType(ct) : CommonMediaTypes.BINARY;
-		log.debug("guessed [" + ct + "] for resource [" + resource.getFilename() + "]. the media type is [" + mt + "]");
+		log.debug("guessed [{}] for resource [{}]. the media type is [{}]", ct, resource.getFilename(), mt);
 		return mt;
 	}
 
