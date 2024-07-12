@@ -30,9 +30,12 @@ record SettingsLookup(Long mogulId, String category) {
 class DefaultPublicationServiceConfiguration {
 
 	@Bean
-	DefaultPublicationService defaultPublicationService(JdbcClient client, MogulService mogulService, TextEncryptor textEncryptor, Settings settings, Map<String, PublisherPlugin<?>> plugins, ObjectMapper objectMapper) {
+	DefaultPublicationService defaultPublicationService(JdbcClient client, MogulService mogulService,
+			TextEncryptor textEncryptor, Settings settings, Map<String, PublisherPlugin<?>> plugins,
+			ObjectMapper objectMapper) {
 		return new DefaultPublicationService(client, mogulService, textEncryptor,
-				settingsLookup -> settings.getAllValuesByCategory(settingsLookup.mogulId(), settingsLookup.category()), plugins, objectMapper);
+				settingsLookup -> settings.getAllValuesByCategory(settingsLookup.mogulId(), settingsLookup.category()),
+				plugins, objectMapper);
 	}
 
 }
@@ -55,8 +58,8 @@ class DefaultPublicationService implements PublicationService {
 	private final Function<SettingsLookup, Map<String, String>> settingsLookupMapSupplier;
 
 	DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
-							  Function<SettingsLookup, Map<String, String>> settingsLookup,
-							  Map<String, PublisherPlugin<?>> plugins, ObjectMapper objectMapper) {
+			Function<SettingsLookup, Map<String, String>> settingsLookup, Map<String, PublisherPlugin<?>> plugins,
+			ObjectMapper objectMapper) {
 		this.db = db;
 		this.settingsLookupMapSupplier = settingsLookup;
 		this.mogulService = mogulService;
@@ -78,8 +81,8 @@ class DefaultPublicationService implements PublicationService {
 		Assert.notNull(plugin, "the plugin must not be null");
 		Assert.notNull(payload, "the payload must not be null");
 		Assert.notNull(mogul, "the mogul should not be null");
-		var configuration = this.settingsLookupMapSupplier.apply(new SettingsLookup(this.mogulService.getCurrentMogul().id(),
-				plugin.name()));
+		var configuration = this.settingsLookupMapSupplier
+			.apply(new SettingsLookup(this.mogulService.getCurrentMogul().id(), plugin.name()));
 		var context = new HashMap<String, String>();
 		context.putAll(configuration);
 		context.putAll(contextAndSettings);

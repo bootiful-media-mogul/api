@@ -24,8 +24,7 @@ class ManagedFileController {
 
 	private final ManagedFileService managedFileService;
 
-
-	ManagedFileController(ManagedFileService managedFileService ) {
+	ManagedFileController(ManagedFileService managedFileService) {
 		this.managedFileService = managedFileService;
 	}
 
@@ -53,7 +52,7 @@ class ManagedFileController {
 	@PostMapping(MF_RW_URL)
 	Map<String, Object> write(@PathVariable Long id, @RequestParam MultipartFile file) {
 		Assert.notNull(id, "the id should not be null");
-		var mogul =  (Mogul) null ;// this.mogulService.getCurrentMogul(); todo fix this!!
+		var mogul = (Mogul) null;// this.mogulService.getCurrentMogul(); todo fix this!!
 		var managedFile = this.managedFileService.getManagedFile(id);
 		Assert.notNull(managedFile, "the managed file is null for managed file id [" + id + "]");
 		Assert.state(managedFile.mogulId().equals(mogul.id()),

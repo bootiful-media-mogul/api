@@ -21,8 +21,7 @@ class NotificationsController {
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	/**
-	 * mapping between {@link Mogul mogul} ID and a given SSE
-	 * emitter
+	 * mapping between {@link Mogul mogul} ID and a given SSE emitter
 	 */
 	private final Map<Long, SseEmitter> sseSessions = new ConcurrentHashMap<>();
 

@@ -34,7 +34,8 @@ class DefaultMogulService implements MogulService {
 
 	private final MogulRowMapper mogulRowMapper = new MogulRowMapper();
 
-	DefaultMogulService(JdbcClient jdbcClient, TransactionTemplate transactionTemplate, 	ApplicationEventPublisher publisher) {
+	DefaultMogulService(JdbcClient jdbcClient, TransactionTemplate transactionTemplate,
+			ApplicationEventPublisher publisher) {
 		this.db = jdbcClient;
 		this.transactionTemplate = transactionTemplate;
 		this.publisher = publisher;
