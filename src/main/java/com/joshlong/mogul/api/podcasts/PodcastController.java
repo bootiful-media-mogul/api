@@ -195,7 +195,8 @@ class PodcastController {
 			this.log.debug("sent an event to clients listening for {}", episode);
 		} //
 		catch (Exception e) {
-			this.log.warn("experienced an exception when trying to emit a podcast completed event via SSE for id # {}", id);
+			this.log.warn("experienced an exception when trying to emit a podcast completed event via SSE for id # {}",
+					id);
 		} //
 
 	}

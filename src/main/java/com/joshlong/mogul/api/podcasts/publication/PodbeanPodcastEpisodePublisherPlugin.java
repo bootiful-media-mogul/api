@@ -80,13 +80,12 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 				EpisodeStatus.DRAFT, EpisodeType.PUBLIC, producedAudioAuthorization.getFileKey(),
 				producedGraphicAuthorization.getFileKey());
 
+		context.put("podbeanPodcastId", podbeanEpisode.getPodcastId());
+		context.put("podbeanEpisodeId", podbeanEpisode.getId());
+		context.put("publishDateInMilliseconds", Long.toString(podbeanEpisode.getPublishTime().getTime()));
 
-
-		context.put ("podbeanPodcastId" , podbeanEpisode.getPodcastId());
-		context.put ("podbeanEpisodeId" , podbeanEpisode.getId());
-		context.put("publishDateInMilliseconds" ,Long.toString( podbeanEpisode.getPublishTime().getTime()));
-
-		// todo write out some metadata associated with the publication to the table as a MAP=>JSON in the publish
+		// todo write out some metadata associated with the publication to the table as a
+		// MAP=>JSON in the publish
 		log.debug("published episode to podbean: [{}]", podbeanEpisode);
 
 	}

@@ -55,13 +55,14 @@ class DefaultPublicationService implements PublicationService {
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	private final TextEncryptor textEncryptor;
+
 	private final ObjectMapper om;
 
 	private final Function<SettingsLookup, Map<String, String>> settingsLookupMapSupplier;
 
 	DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
-							  Function<SettingsLookup, Map<String, String>> settingsLookup, Map<String, PublisherPlugin<?>> plugins,
-							  ObjectMapper objectMapper, ObjectMapper om) {
+			Function<SettingsLookup, Map<String, String>> settingsLookup, Map<String, PublisherPlugin<?>> plugins,
+			ObjectMapper objectMapper, ObjectMapper om) {
 		this.db = db;
 		this.settingsLookupMapSupplier = settingsLookup;
 		this.mogulService = mogulService;
@@ -107,7 +108,7 @@ class DefaultPublicationService implements PublicationService {
 
 	@Override
 	public Publication getPublicationById(Long publicationId) {
-		return this. db.sql("select * from publication where id =? ")
+		return this.db.sql("select * from publication where id =? ")
 			.params(publicationId)
 			.query(this.publicationRowMapper)
 			.single();
