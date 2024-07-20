@@ -1,7 +1,7 @@
 package com.joshlong.mogul.api.podcasts.publication;
 
-import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.managedfiles.CommonMediaTypes;
+import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.podcasts.Episode;
 import com.joshlong.mogul.api.utils.FileUtils;
 import com.joshlong.podbean.EpisodeStatus;
@@ -24,6 +24,13 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @Component(PodbeanPodcastEpisodePublisherPlugin.PLUGIN_NAME)
 class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlugin, BeanNameAware {
+
+	/**
+	 * well known values written to the context after publication.
+	 */
+	static final String CONTEXT_PODBEAN_PODCAST_ID = "podbeanPodcastId";
+	static final String CONTEXT_PODBEAN_EPISODE_ID = "podbeanEpisodeId";
+	static final String CONTEXT_PODBEAN_EPISODE_PUBLISH_DATE_IN_MILLISECONDS = "podbeanEpisodeId";
 
 	public static final String PLUGIN_NAME = "podbean";
 
@@ -80,9 +87,10 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 				EpisodeStatus.DRAFT, EpisodeType.PUBLIC, producedAudioAuthorization.getFileKey(),
 				producedGraphicAuthorization.getFileKey());
 
-		context.put("podbeanPodcastId", podbeanEpisode.getPodcastId());
-		context.put("podbeanEpisodeId", podbeanEpisode.getId());
-		context.put("publishDateInMilliseconds", Long.toString(podbeanEpisode.getPublishTime().getTime()));
+		context.put(CONTEXT_PODBEAN_PODCAST_ID, podbeanEpisode.getPodcastId());
+		context.put(CONTEXT_PODBEAN_EPISODE_ID, podbeanEpisode.getId());
+		context.put(CONTEXT_PODBEAN_EPISODE_PUBLISH_DATE_IN_MILLISECONDS,
+				Long.toString(podbeanEpisode.getPublishTime().getTime()));
 
 		// todo write out some metadata associated with the publication to the table as a
 		// MAP=>JSON in the publish
@@ -105,6 +113,9 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 	@Override
 	public void unpublish(Map<String, String> context, Episode payload) {
 		log.debug("un-publishing to podbean with context [{}] and payload [{}]", context, payload);
+		var episodeId = context.get(CONTEXT_PODBEAN_EPISODE_ID);
+		this.podbeanClient.updateEpisode(episodeId, payload.title(), payload.description(), EpisodeStatus.DRAFT,
+				EpisodeType.PRIVATE, null, null);
 	}
 
 }
