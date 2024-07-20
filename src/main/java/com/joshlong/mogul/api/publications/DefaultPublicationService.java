@@ -19,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
 
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -56,16 +55,18 @@ class DefaultPublicationService implements PublicationService {
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	private final TextEncryptor textEncryptor;
+	private final ObjectMapper om;
 
 	private final Function<SettingsLookup, Map<String, String>> settingsLookupMapSupplier;
 
 	DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
-			Function<SettingsLookup, Map<String, String>> settingsLookup, Map<String, PublisherPlugin<?>> plugins,
-			ObjectMapper objectMapper) {
+							  Function<SettingsLookup, Map<String, String>> settingsLookup, Map<String, PublisherPlugin<?>> plugins,
+							  ObjectMapper objectMapper, ObjectMapper om) {
 		this.db = db;
 		this.settingsLookupMapSupplier = settingsLookup;
 		this.mogulService = mogulService;
 		this.textEncryptor = textEncryptor;
+		this.om = om;
 		this.plugins.putAll(plugins);
 		this.publicationRowMapper = new PublicationRowMapper(objectMapper, textEncryptor);
 		Assert.notNull(this.db, "the JdbcClient must not be null");
@@ -74,6 +75,7 @@ class DefaultPublicationService implements PublicationService {
 		Assert.notNull(this.settingsLookupMapSupplier, "the settings must not be null");
 		Assert.state(!this.plugins.isEmpty(), "there are no plugins for publication");
 		Assert.notNull(this.publicationRowMapper, "the settings must not be null");
+		Assert.notNull(this.om, "the objectMapper must not be null");
 	}
 
 	@Override
@@ -85,7 +87,7 @@ class DefaultPublicationService implements PublicationService {
 		Assert.notNull(mogul, "the mogul should not be null");
 		var configuration = this.settingsLookupMapSupplier
 			.apply(new SettingsLookup(this.mogulService.getCurrentMogul().id(), plugin.name()));
-		var context = new HashMap<String, String>();
+		var context = new ConcurrentHashMap<String, String>();
 		context.putAll(configuration);
 		context.putAll(contextAndSettings);
 		plugin.publish(context, payload);
@@ -105,7 +107,7 @@ class DefaultPublicationService implements PublicationService {
 
 	@Override
 	public Publication getPublicationById(Long publicationId) {
-		return db.sql("select * from publication where id =? ")
+		return this. db.sql("select * from publication where id =? ")
 			.params(publicationId)
 			.query(this.publicationRowMapper)
 			.single();

@@ -82,15 +82,13 @@ class PodcastController {
 	@MutationMapping
 	boolean addPodcastEpisodeSegment(@Argument Long episodeId) {
 		var mogul = this.mogulService.getCurrentMogul().id();
-
 		this.podcastService.createEpisodeSegment(mogul, episodeId, "", 0);
-
 		return true;
 	}
 
 	@SchemaMapping
 	Collection<String> availablePlugins(Episode episode) {
-		var mogul = mogulService.getCurrentMogul();
+		var mogul = this.mogulService.getCurrentMogul();
 		var plugins = new HashSet<String>();
 		for (var pluginName : this.plugins.keySet()) {
 			var configuration = settings.getAllValuesByCategory(mogul.id(), pluginName);
@@ -131,9 +129,9 @@ class PodcastController {
 
 	@MutationMapping
 	Long deletePodcastEpisode(@Argument Long id) {
-		var ep = podcastService.getEpisodeById(id);
+		var ep = this.podcastService.getEpisodeById(id);
 		this.mogulService.assertAuthorizedMogul(ep.podcast().mogulId());
-		podcastService.deletePodcastEpisode(id);
+		this.podcastService.deletePodcastEpisode(id);
 		return id;
 	}
 
@@ -170,34 +168,34 @@ class PodcastController {
 	@MutationMapping
 	Podcast createPodcast(@Argument String title) {
 		Assert.hasText(title, "the title for the podcast must be non-empty!");
-		return podcastService.createPodcast(mogulService.getCurrentMogul().id(), title);
+		return this.podcastService.createPodcast(this.mogulService.getCurrentMogul().id(), title);
 	}
 
 	@MutationMapping
 	Episode createPodcastEpisodeDraft(@Argument Long podcastId, @Argument String title, @Argument String description) {
-		var currentMogulId = mogulService.getCurrentMogul().id();
-		var podcast = podcastService.getPodcastById(podcastId);
+		var currentMogulId = this.mogulService.getCurrentMogul().id();
+		var podcast = this.podcastService.getPodcastById(podcastId);
 		Assert.notNull(podcast, "the podcast is null!");
-		mogulService.assertAuthorizedMogul(podcast.mogulId());
-		return podcastService.createPodcastEpisodeDraft(currentMogulId, podcastId, title, description);
+		this.mogulService.assertAuthorizedMogul(podcast.mogulId());
+		return this.podcastService.createPodcastEpisodeDraft(currentMogulId, podcastId, title, description);
 	}
 
 	@ApplicationModuleListener
 	void broadcastPodcastEpisodeCompletionEventToClients(PodcastEpisodeCompletionEvent podcastEpisodeCompletionEvent) {
 		var episode = podcastEpisodeCompletionEvent.episode();
 		var id = episode.id();
-		log.debug("going to send an event to the clients listening for episode [{}]", id);
+		this.log.debug("going to send an event to the clients listening for episode [{}]", id);
 		try {
 			var map = Map.of("episodeId", id, "complete", episode.complete());
-			var json = om.writeValueAsString(map);
+			var json = this.om.writeValueAsString(map);
 			var evt = NotificationEvent.notificationEventFor(
 					podcastEpisodeCompletionEvent.episode().podcast().mogulId(), podcastEpisodeCompletionEvent,
 					Long.toString(episode.id()), json, false, false);
-			publisher.publishEvent(evt);
-			log.debug("sent an event to clients listening for {}", episode);
+			this.publisher.publishEvent(evt);
+			this.log.debug("sent an event to clients listening for {}", episode);
 		} //
 		catch (Exception e) {
-			log.warn("experienced an exception when trying to emit a podcast completed event via SSE for id # {}", id);
+			this.log.warn("experienced an exception when trying to emit a podcast completed event via SSE for id # {}", id);
 		} //
 
 	}

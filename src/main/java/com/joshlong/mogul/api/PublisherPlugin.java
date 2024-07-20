@@ -34,6 +34,7 @@ public interface PublisherPlugin<T> {
 		return isConfigurationValid(context) && payload != null;
 	}
 
+
 	void publish(Map<String, String> context, T payload);
 
 	void unpublish(Map<String, String> context, T payload);
