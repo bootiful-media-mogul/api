@@ -91,11 +91,7 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 		context.put(CONTEXT_PODBEAN_EPISODE_ID, podbeanEpisode.getId());
 		context.put(CONTEXT_PODBEAN_EPISODE_PUBLISH_DATE_IN_MILLISECONDS,
 				Long.toString(podbeanEpisode.getPublishTime().getTime()));
-
-		// todo write out some metadata associated with the publication to the table as a
-		// MAP=>JSON in the publish
 		log.debug("published episode to podbean: [{}]", podbeanEpisode);
-
 	}
 
 	private static File download(Resource resource, File file) {
