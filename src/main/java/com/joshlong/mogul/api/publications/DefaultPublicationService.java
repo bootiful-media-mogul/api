@@ -56,18 +56,15 @@ class DefaultPublicationService implements PublicationService {
 
 	private final TextEncryptor textEncryptor;
 
-	private final ObjectMapper om;
-
 	private final Function<SettingsLookup, Map<String, String>> settingsLookupMapSupplier;
 
 	DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
 			Function<SettingsLookup, Map<String, String>> settingsLookup, Map<String, PublisherPlugin<?>> plugins,
-			ObjectMapper objectMapper, ObjectMapper om) {
+			ObjectMapper objectMapper) {
 		this.db = db;
 		this.settingsLookupMapSupplier = settingsLookup;
 		this.mogulService = mogulService;
 		this.textEncryptor = textEncryptor;
-		this.om = om;
 		this.plugins.putAll(plugins);
 		this.publicationRowMapper = new PublicationRowMapper(objectMapper, textEncryptor);
 		Assert.notNull(this.db, "the JdbcClient must not be null");
