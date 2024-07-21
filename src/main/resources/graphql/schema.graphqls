@@ -15,6 +15,7 @@ type Mogul {
     name : String
 }
 
+
 type Query {
 
     # outstanding notifications
@@ -87,6 +88,11 @@ type NotificationEvent {
 }
 
 type Mutation {
+    # todo remove this after the data is migrated successfully
+
+    migrate  : ID
+    # todo remove the above after the data is migrated
+
     publishPodcastEpisode(episodeId:ID, pluginName: String): Boolean
     updatePodcastEpisode(episodeId: ID, title: String, description: String): Episode
     createPodcast(title:String): Podcast

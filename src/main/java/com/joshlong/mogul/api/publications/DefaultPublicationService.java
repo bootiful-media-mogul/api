@@ -73,7 +73,6 @@ class DefaultPublicationService implements PublicationService {
 		Assert.notNull(this.settingsLookupMapSupplier, "the settings must not be null");
 		Assert.state(!this.plugins.isEmpty(), "there are no plugins for publication");
 		Assert.notNull(this.publicationRowMapper, "the settings must not be null");
-		Assert.notNull(this.om, "the objectMapper must not be null");
 	}
 
 	@Override
