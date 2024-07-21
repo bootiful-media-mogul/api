@@ -14,16 +14,16 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Controller;
-import org.springframework.util.Assert;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.client.RestClient;
 
 import javax.sql.DataSource;
-import java.security.Principal;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * <a href="https://github.com/spring-tips/spring-graphql-redux/blob/main/live/5-clients/src/main/java/com/example/clients/ClientsApplication.java">
+ * see this page for examples on using the Spring GraphQL client</a>
+ */
 @Controller
 class MigrationController {
 
@@ -50,9 +50,7 @@ class Migration {
 
 	private static final String API_ROOT = "http://127.0.0.1:8080";
 
-	private final DataSource source;
-
-	private final JdbcClient sourceJdbcClient;
+	private final JdbcClient sourceJdbcClient, destinationJdbcClient;
 
 	private HttpSyncGraphQlClient client(String bearerToken) {
 		var wc = RestClient.builder()
@@ -62,12 +60,15 @@ class Migration {
 		return HttpSyncGraphQlClient.create(wc);
 	}
 
-	Migration(@Value("${legacy.db.username:mogul}") String username,
-			@Value("${legacy.db.password:mogul}") String password, @Value("${legacy.db.host:localhost}") String host,
-			@Value("${legacy.db.schema:legacy}") String schema) {
-		this.source = dataSource(username, password, host, schema);
-		Assert.notNull(this.source, "the source can not be null");
-		this.sourceJdbcClient = JdbcClient.create(this.source);
+	Migration(
+			DataSource destination,
+			@Value("${legacy.db.username:mogul}") String username, //
+			@Value("${legacy.db.password:mogul}") String password, //
+			@Value("${legacy.db.host:localhost}") String host, //
+			@Value("${legacy.db.schema:legacy}") String schema //
+	) {
+		this.sourceJdbcClient = JdbcClient.create(dataSource(username, password, host, schema));
+		this.destinationJdbcClient = JdbcClient.create(destination);
 	}
 
 	private static DataSource dataSource(String username, String password, String host, String dbSchema) {
@@ -156,20 +157,32 @@ class Migration {
 		var media = this.media();
 		var podcasts = this.podcasts(media);
 		var gql = this.client(bearer);
+		var sql = """
+				delete from managed_file_deletion_request ;
+				delete from publication ;
+				delete from podcast_episode_segment ;
+				delete from podcast_episode ;
+				delete from managed_file ;
+				delete from event_publication ;
+				""";
+		this.destinationJdbcClient.sql(sql).update();
+
 
 		var httpRequestDocument = """
 				query {
 				 podcasts { id   }
 				}
 				""";
-		System.out.println(gql.document(httpRequestDocument)
-			.retrieveSync("podcasts")
-			.toEntityList(new ParameterizedTypeReference<Map<String, Object>>() {
-			}));
+		var destinationPodcastId = Long.parseLong((String) gql.document(httpRequestDocument)
+				.retrieveSync("podcasts")
+				.toEntityList(new ParameterizedTypeReference<Map<String, Object>>() {
+				})
+				.getFirst()
+				.get("id"));
 
 		podcasts.forEach(podcast -> {
 			try {
-				migrate(gql, podcast);
+				migrate(gql, destinationPodcastId, podcast);
 			}
 			catch (Exception e) {
 				throw new RuntimeException(e);
@@ -180,8 +193,34 @@ class Migration {
 
 	}
 
-	private void migrate(GraphQlClient client, Podcast podcast) throws Exception {
-		// System.out.println(podcast.toString());
+	private void migrate(GraphQlClient client, Long newPodcastId, Podcast oldEpisode) throws Exception {
+		var gql = """
+				mutation CreatePodcastEpisodeDraft ($podcast: ID, $title: String, $description: String ){ 
+				      createPodcastEpisodeDraft( podcastId: $podcast, title: $title, description: $description) { 
+				           id  
+				      }
+				     }
+				""";
+		var podcastEpisodeDraftId = client
+				.document(gql)
+				.variable("podcast", newPodcastId)
+				.variable("title", oldEpisode.title())
+				.variable("description", oldEpisode.description())
+				.executeSync()
+				.field("createPodcastEpisodeDraft")
+				.toEntity(new ParameterizedTypeReference<Map<String, Object>>() {
+				});
+		System.out.println("podcast draft episode ID: " + podcastEpisodeDraftId);
+
+		// todo download the audio from the source and then attach it to a segment
+		var media = oldEpisode.media();
+		var photo = media.stream().filter(m -> m.type().equals("photo")).findAny().orElse(null);
+		var intro = media.stream().filter(m -> m.type().equals("intro")).findAny().orElse(null);
+		var interview = media.stream().filter(m -> m.type().equals("interview")).findAny().orElse(null);
+//		var interview = media.stream().filter( m -> m.type().equals("interview")).findFirst().get();
+
+
+
 	}
 
 }

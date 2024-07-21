@@ -164,7 +164,6 @@ class DefaultManagedFileService implements ManagedFileService {
 				""")
 			.params(UUID.randomUUID().toString(), mogulId, bucket, folder, fileName, size, mediaType.toString())
 			.update(kh);
-		log.info("the bucket is [{}]", bucket);
 		return getManagedFile(((Number) Objects.requireNonNull(kh.getKeys()).get("id")).longValue());
 	}
 
