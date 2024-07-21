@@ -19,10 +19,14 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.integration.annotation.IntegrationComponentScan;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 
+import java.security.Principal;
 import java.time.format.DateTimeFormatter;
 import java.util.Set;
 

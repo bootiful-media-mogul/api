@@ -4,6 +4,7 @@ import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.jdbc.JdbcConnectionDetails;
 import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.graphql.client.GraphQlClient;
 import org.springframework.graphql.client.HttpSyncGraphQlClient;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
@@ -14,9 +15,12 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.Assert;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.client.RestClient;
 
 import javax.sql.DataSource;
+import java.security.Principal;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -44,14 +48,16 @@ class MigrationController {
 @Component
 class Migration {
 
+	private static final String API_ROOT = "http://127.0.0.1:8080";
+
 	private final DataSource source;
 
 	private final JdbcClient sourceJdbcClient;
 
-	private static HttpSyncGraphQlClient client(String bearerToken) {
+	private HttpSyncGraphQlClient client(String bearerToken) {
 		var wc = RestClient.builder()
-			.defaultHeader(HttpHeaders.AUTHORIZATION, "Authorization " + bearerToken)
-			.baseUrl("http://127.0.0.1:1010/api/graphql")
+			.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + bearerToken)
+			.baseUrl(API_ROOT + "/graphql")
 			.build();
 		return HttpSyncGraphQlClient.create(wc);
 	}
@@ -135,7 +141,8 @@ class Migration {
 				});
 
 			return podcast;
-		}).list();
+		})//
+			.list();
 	}
 
 	Collection<Media> media() {
@@ -145,18 +152,20 @@ class Migration {
 			.list();
 	}
 
-	String start(String bearer) throws Exception {
+	String start(String bearer) {
 		var media = this.media();
 		var podcasts = this.podcasts(media);
-		var gql = client(bearer);
-		record Mogul(String name) {
-		}
+		var gql = this.client(bearer);
+
 		var httpRequestDocument = """
 				query {
-				 me { name  }
+				 podcasts { id   }
 				}
 				""";
-		gql.document(httpRequestDocument).retrieve("me").toEntity(Mogul.class).subscribe(System.out::println);
+		System.out.println(gql.document(httpRequestDocument)
+			.retrieveSync("podcasts")
+			.toEntityList(new ParameterizedTypeReference<Map<String, Object>>() {
+			}));
 
 		podcasts.forEach(podcast -> {
 			try {
