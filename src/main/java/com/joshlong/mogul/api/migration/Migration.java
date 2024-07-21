@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.migration;
 
+import com.joshlong.mogul.api.managedfiles.Storage;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.jdbc.JdbcConnectionDetails;
@@ -14,14 +15,28 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Controller;
+import org.springframework.util.Assert;
+import org.springframework.util.FileCopyUtils;
+import org.springframework.util.StringUtils;
+import org.springframework.util.SystemPropertyUtils;
 import org.springframework.web.client.RestClient;
 
 import javax.sql.DataSource;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
- * <a href="https://github.com/spring-tips/spring-graphql-redux/blob/main/live/5-clients/src/main/java/com/example/clients/ClientsApplication.java">
+ * <a href=
+ * "https://github.com/spring-tips/spring-graphql-redux/blob/main/live/5-clients/src/main/java/com/example/clients/ClientsApplication.java">
  * see this page for examples on using the Spring GraphQL client</a>
  */
 @Controller
@@ -34,13 +49,20 @@ class MigrationController {
 	}
 
 	@MutationMapping
-	String migrate() throws Exception {
+	CompletableFuture<Void> migrate() throws Exception {
 		var authentication = (JwtAuthenticationToken) SecurityContextHolder //
 			.getContextHolderStrategy() //
 			.getContext() //
 			.getAuthentication();
 		var token = authentication.getToken().getTokenValue();
-		return this.migration.start(token);
+		return CompletableFuture.runAsync(() -> {
+			try {
+				this.migration.start(token);
+			}
+			catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		});
 	}
 
 }
@@ -52,23 +74,31 @@ class Migration {
 
 	private final JdbcClient sourceJdbcClient, destinationJdbcClient;
 
+	private final Storage storage;
+
+	private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
+	private final File oldManagedFileSystem = new File(SystemPropertyUtils.resolvePlaceholders("${HOME}/Desktop/old/"));
+
+	Migration(DataSource destination, @Value("${legacy.db.username:mogul}") String username, //
+			@Value("${legacy.db.password:mogul}") String password, //
+			@Value("${legacy.db.host:localhost}") String host, //
+			@Value("${legacy.db.schema:legacy}") String schema, Storage storage //
+	) {
+		this.storage = storage;
+		this.sourceJdbcClient = JdbcClient.create(dataSource(username, password, host, schema));
+		this.destinationJdbcClient = JdbcClient.create(destination);
+		Assert.notNull(this.storage, "the storage should not be null");
+		Assert.state(this.oldManagedFileSystem.exists() || this.oldManagedFileSystem.mkdirs(),
+				"the directory [" + this.oldManagedFileSystem.getAbsolutePath() + "] does not exist");
+	}
+
 	private HttpSyncGraphQlClient client(String bearerToken) {
 		var wc = RestClient.builder()
 			.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + bearerToken)
 			.baseUrl(API_ROOT + "/graphql")
 			.build();
 		return HttpSyncGraphQlClient.create(wc);
-	}
-
-	Migration(
-			DataSource destination,
-			@Value("${legacy.db.username:mogul}") String username, //
-			@Value("${legacy.db.password:mogul}") String password, //
-			@Value("${legacy.db.host:localhost}") String host, //
-			@Value("${legacy.db.schema:legacy}") String schema //
-	) {
-		this.sourceJdbcClient = JdbcClient.create(dataSource(username, password, host, schema));
-		this.destinationJdbcClient = JdbcClient.create(destination);
 	}
 
 	private static DataSource dataSource(String username, String password, String host, String dbSchema) {
@@ -106,12 +136,15 @@ class Migration {
 			String podbeanDraftPublished, String podbeanMediaUri, String podbeanPhotoUri, String s3AudioFileName,
 			String s3AudioUri, String s3PhotoFileName, String s3PhotoUri, String title, String transcript, String uid,
 			Collection<Media> media) {
+
 	}
 
 	record Media(Integer id, String description, String extension, String fileName, String href, String type) {
+
 	}
 
 	record PodcastMedia(Integer podcastId, Integer mediaId) {
+
 	}
 
 	Collection<PodcastMedia> podcastMedia() {
@@ -153,7 +186,7 @@ class Migration {
 			.list();
 	}
 
-	String start(String bearer) {
+	String start(String bearer) throws Exception {
 		var media = this.media();
 		var podcasts = this.podcasts(media);
 		var gql = this.client(bearer);
@@ -167,59 +200,184 @@ class Migration {
 				""";
 		this.destinationJdbcClient.sql(sql).update();
 
-
 		var httpRequestDocument = """
 				query {
 				 podcasts { id   }
 				}
 				""";
 		var destinationPodcastId = Long.parseLong((String) gql.document(httpRequestDocument)
-				.retrieveSync("podcasts")
-				.toEntityList(new ParameterizedTypeReference<Map<String, Object>>() {
-				})
-				.getFirst()
-				.get("id"));
+			.retrieveSync("podcasts")
+			.toEntityList(new ParameterizedTypeReference<Map<String, Object>>() {
+			})
+			.getFirst()
+			.get("id"));
 
-		podcasts.forEach(podcast -> {
-			try {
-				migrate(gql, destinationPodcastId, podcast);
-			}
-			catch (Exception e) {
-				throw new RuntimeException(e);
-			}
-		});
+		var migration = new HashSet<CompletableFuture<Void>>();
 
+		for (var podcast : podcasts)
+			migration.add(CompletableFuture.runAsync(() -> {
+				try {
+					migrate(gql, destinationPodcastId, podcast);
+				}
+				catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+			}));
+
+		CompletableFuture.allOf(migration.toArray(new CompletableFuture[0])).get();
+
+		System.out.println("finished processing all the episodes!");
 		return UUID.randomUUID().toString();
+	}
+
+	private File download(String s3Url) throws Exception {
+		var parts = s3Url.split("/");
+		var bucket = parts[2];
+		var key = parts[3] + "/" + parts[4];
+		var localFile = new File(this.oldManagedFileSystem, bucket + "/" + key);
+		var read = this.storage.read(bucket, key);
+
+		if (null == read)
+			return null;
+
+		var cl = read.contentLength();
+
+		if (!localFile.exists() || (cl != localFile.length())) {
+			System.out.println("contentLength: " + cl + ":" + localFile.length());
+			System.out.println(
+					"downloading [" + localFile.getAbsolutePath() + "] on [" + Thread.currentThread().getName() + "].");
+			var directory = localFile.getParentFile();
+			if (!directory.exists())
+				directory.mkdirs();
+			Assert.state(directory.exists(), "the directory [" + directory.getAbsolutePath() + "] does not exist");
+
+			read = this.storage.read(bucket, key); // don't want to work on the same
+													// InputStream twice
+			try (var in = new BufferedInputStream(read.getInputStream());
+					var out = new BufferedOutputStream(new FileOutputStream(localFile))) {
+				FileCopyUtils.copy(in, out);
+			}
+			Assert.state(localFile.exists(), "the local file must exist now, but doesn't");
+		}
+		Assert.state(localFile.exists() && localFile.isFile(), "the local file must " + "be a file, not a directory");
+		return localFile;
 
 	}
 
 	private void migrate(GraphQlClient client, Long newPodcastId, Podcast oldEpisode) throws Exception {
 		var gql = """
-				mutation CreatePodcastEpisodeDraft ($podcast: ID, $title: String, $description: String ){ 
-				      createPodcastEpisodeDraft( podcastId: $podcast, title: $title, description: $description) { 
-				           id  
+				mutation CreatePodcastEpisodeDraft ($podcast: ID, $title: String, $description: String ){
+				      createPodcastEpisodeDraft( podcastId: $podcast, title: $title, description: $description) {
+				           id
 				      }
 				     }
 				""";
-		var podcastEpisodeDraftId = client
-				.document(gql)
-				.variable("podcast", newPodcastId)
-				.variable("title", oldEpisode.title())
-				.variable("description", oldEpisode.description())
-				.executeSync()
-				.field("createPodcastEpisodeDraft")
-				.toEntity(new ParameterizedTypeReference<Map<String, Object>>() {
-				});
-		System.out.println("podcast draft episode ID: " + podcastEpisodeDraftId);
+		var podcastEpisodeDraftId = Long.parseLong((String) client.document(gql)
+			.variable("podcast", newPodcastId)
+			.variable("title", oldEpisode.title())
+			.variable("description", oldEpisode.description())
+			.executeSync()
+			.field("createPodcastEpisodeDraft")
+			.toEntity(new ParameterizedTypeReference<Map<String, Object>>() {
+			})
+			.get("id"));
+
+		this.destinationJdbcClient.sql("update podcast_episode set created = ? where id = ?")
+			.params(oldEpisode.date(), podcastEpisodeDraftId)
+			.update();
 
 		// todo download the audio from the source and then attach it to a segment
 		var media = oldEpisode.media();
-		var photo = media.stream().filter(m -> m.type().equals("photo")).findAny().orElse(null);
-		var intro = media.stream().filter(m -> m.type().equals("intro")).findAny().orElse(null);
-		var interview = media.stream().filter(m -> m.type().equals("interview")).findAny().orElse(null);
-//		var interview = media.stream().filter( m -> m.type().equals("interview")).findFirst().get();
 
+		class MediaPredicate implements Predicate<Media> {
 
+			final String tag;
+
+			MediaPredicate(String tag) {
+				this.tag = tag;
+			}
+
+			@Override
+			public boolean test(Media media) {
+				return media != null && StringUtils.hasText(media.href()) && media.type().equals(this.tag);
+			}
+
+		}
+
+		var photo = media.stream().filter(new MediaPredicate("photo")).findAny().orElse(null);
+		var intro = media.stream().filter(new MediaPredicate("introduction")).findAny().orElse(null);
+		var interview = media.stream().filter(new MediaPredicate("interview")).findAny().orElse(null);
+		var produced = media.stream().filter(new MediaPredicate("produced")).findAny().orElse(null);
+		var hasValidFiles = produced != null
+				|| (photo != null && intro != null && interview != null && StringUtils.hasText(photo.href())
+						&& StringUtils.hasText(intro.href()) && StringUtils.hasText(interview.href()));
+		// Assert.state(hasValidFiles, "there must be valid files for [" + oldEpisode.id()
+		// + "]");
+		if (!hasValidFiles)
+			return;
+
+		class MediaDownloadingSupplier implements Supplier<File> {
+
+			private final Media media;
+
+			MediaDownloadingSupplier(Media media) {
+				this.media = media;
+			}
+
+			@Override
+			public File get() {
+				try {
+					if (this.media != null && StringUtils.hasText(this.media.href())) {
+						return download(this.media.href());
+					}
+					return null;
+				} //
+				catch (Exception e) {
+					throw new RuntimeException(e);
+				}
+			}
+
+		}
+
+		var cfs = new HashSet<CompletableFuture<?>>();
+		for (var m : new Media[] { produced, interview, intro, photo }) {
+			if (m != null) {
+				cfs.add(CompletableFuture.supplyAsync(new MediaDownloadingSupplier(m)));
+			}
+		}
+		var awaitDownloads = CompletableFuture.allOf(cfs.toArray(new CompletableFuture[] {}));
+		awaitDownloads.get();
+		// System.out.println("everything is downloaded for podcast " +
+		// podcastEpisodeDraftId);
+		if (produced != null) {
+			// download(produced.href());
+
+		} //
+		else {
+			if (photo != null) {
+
+			} //
+			else {
+				System.out.println("photo is null for [" + podcastEpisodeDraftId + "]");
+			}
+
+			if (intro != null) {
+
+			} //
+			else {
+				System.out.println("intro is null for [" + podcastEpisodeDraftId + "]");
+			}
+
+			if (interview != null) {
+
+			} //
+			else {
+				System.out.println("interview is null for [" + podcastEpisodeDraftId + "]");
+			}
+			// var interview = media.stream().filter( m ->
+			// m.type().equals("interview")).findFirst().get();
+
+		}
 
 	}
 

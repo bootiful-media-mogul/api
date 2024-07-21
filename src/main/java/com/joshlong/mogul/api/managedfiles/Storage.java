@@ -17,8 +17,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Objects;
 
+// todo once the migration is done, make this package private again! we only needed this class for migration to work
 @Component
-class Storage {
+public class Storage {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -140,9 +141,7 @@ class Storage {
 	}
 
 	private static void validUri(URI uri) {
-		Assert.state(
-				uri != null && uri.getScheme().toLowerCase().equalsIgnoreCase("s3")
-						&& uri.getPath().split("/").length == 2,
+		Assert.state(uri != null && uri.getScheme().equalsIgnoreCase("s3") && uri.getPath().split("/").length == 2,
 				"this uri [" + Objects.requireNonNull(uri) + "] is not a valid s3 reference");
 	}
 
