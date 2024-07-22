@@ -13,14 +13,12 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.graphql.client.HttpSyncGraphQlClient;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.http.client.JettyClientHttpRequestFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
 import javax.sql.DataSource;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Configuration
@@ -32,9 +30,12 @@ class MigrationConfiguration {
 
 	private final JdbcClient oldDb, newDb;
 
-	MigrationConfiguration(DataSource dataSource, @Value("${legacy.db.username:mogul}") String username,
-			@Value("${legacy.db.password:mogul}") String password, @Value("${legacy.db.host:localhost}") String host,
-			@Value("${legacy.db.schema:legacy}") String schema) {
+	MigrationConfiguration(DataSource dataSource, //
+			@Value("${legacy.db.username:mogul}") String username, //
+			@Value("${legacy.db.password:mogul}") String password, //
+			@Value("${legacy.db.host:localhost}") String host, //
+			@Value("${legacy.db.schema:legacy}") String schema //
+	) {
 		this.oldDb = JdbcClient.create(dataSource(username, password, host, schema));
 		this.newDb = JdbcClient.create(dataSource);
 	}
@@ -52,20 +53,15 @@ class MigrationConfiguration {
 	@Bean(MIGRATION_REST_TEMPLATE_QUALIFIER)
 	RestTemplate restTemplate(RestTemplateBuilder builder) {
 		return builder.rootUri(API_ROOT)
-			.requestCustomizers(request -> request.getHeaders().putAll(authorizationHeader()))
+			.requestCustomizers(
+					request -> request.getHeaders().put(HttpHeaders.AUTHORIZATION, List.of("Bearer " + TOKEN.get())))
 			.requestFactory(JdkClientHttpRequestFactory.class)
 			.build();
 	}
 
-	private static Map<String, List<String>> authorizationHeader() {
-		return Map.of(HttpHeaders.AUTHORIZATION, List.of("Bearer " + TOKEN.get()));
-	}
-
 	@Bean(MIGRATION_REST_CLIENT_QUALIFIER)
-	RestClient migrationRestClient(RestClient.Builder builder) {
-		return builder.requestInitializer(request -> request.getHeaders().putAll(authorizationHeader()))
-			.baseUrl(API_ROOT + "/graphql")
-			.build();
+	RestClient migrationRestClient(@Qualifier(MIGRATION_REST_TEMPLATE_QUALIFIER) RestTemplate restTemplate) {
+		return RestClient.builder(restTemplate).build();
 	}
 
 	@Bean
@@ -86,7 +82,7 @@ class MigrationConfiguration {
 		return new OldApiClient(this.oldDb);
 	}
 
-	private static DataSource dataSource(String username, String password, String host, String dbSchema) {
+	private DataSource dataSource(String username, String password, String host, String dbSchema) {
 		var jdbc = new JdbcConnectionDetails() {
 			@Override
 			public String getUsername() {
@@ -104,7 +100,7 @@ class MigrationConfiguration {
 			}
 		};
 		return DataSourceBuilder //
-			.create(Migration.class.getClassLoader())
+			.create(getClass().getClassLoader())
 			.type(HikariDataSource.class)
 			.driverClassName(jdbc.getDriverClassName())
 			.url(jdbc.getJdbcUrl())

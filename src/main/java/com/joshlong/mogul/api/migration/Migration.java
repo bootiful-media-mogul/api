@@ -127,8 +127,11 @@ class Migration {
 		var hasValidFiles = produced != null
 				|| (photo != null && intro != null && interview != null && StringUtils.hasText(photo.href())
 						&& StringUtils.hasText(intro.href()) && StringUtils.hasText(interview.href()));
-		if (!hasValidFiles)
+
+		if (!hasValidFiles) {
+			log.warn("we don't have valid files for podcast " + newPodcastId + ". Returning.");
 			return;
+		}
 		var completableFutures = new HashSet<CompletableFuture<?>>();
 		for (var m : new OldApiClient.Media[] { produced, interview, intro, photo }) {
 			if (m != null) {
@@ -139,23 +142,43 @@ class Migration {
 		}
 		CompletableFuture.allOf(completableFutures.toArray(new CompletableFuture[] {})).get();
 		System.out.println("have all the files locally...");
-		// todo graphql client to get segments and update a segment and create a segment
 		var episode = this.newApiClient.podcastEpisodeById(podcastEpisodeDraftId);
 
-		// first write the photo to the managedFile
+		// photo
 		var photoFile = download(photo.href());
-		// todo write this File to the new episodes `photo` ManagedFile
-		this.newApiClient.writeManagedFile(episode.graphic().id(),
-				new FileSystemResource(Objects.requireNonNull(photoFile)));
 
-		log.debug("wrote managed file for photo for episode [" + episode.graphic().id() + "]");
-		for (var segment : episode.segments()) {
-			var audioManagedFile = segment.audio();
-			var producedAudioManagedFile = segment.producedAudio();
+		write(episode.graphic().id(), photoFile);
 
+		if (produced != null) {
+
+			var fileForProducedAudio = download(produced.href());
+			Assert.state(episode.segments() != null && episode.segments().length >= 0,
+					"there should be at least one audio segment");
+			var firstSegment = episode.segments()[0];
+			var mf = firstSegment.audio();
+			write(mf.id(), fileForProducedAudio);
+
+		} //
+		else {
+			// otherwise we need to add the opening bumper, the intro, the bumper, the
+			// interview, and the closing audio
+			// while also preserving the existing first segment and just appending to the
+			// collection
 		}
+		// log.debug("wrote managed file for photo for episode [" + episode.graphic().id()
+		// + "]");
+		// for (var segment : episode.segments()) {
+		// var audioManagedFile = segment.audio();
+		// var producedAudioManagedFile = segment.producedAudio();
+		//
+		//
+		// }
 		log.debug("got the episode " + episode);
 
+	}
+
+	private void write(Long mfId, File file) throws Exception {
+		this.newApiClient.writeManagedFile(mfId, new FileSystemResource(Objects.requireNonNull(file)));
 	}
 
 	private File download(String s3Url) {
