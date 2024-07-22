@@ -131,7 +131,7 @@ public class Storage {
 	public Resource read(String bucket, String objectName) {
 		try {
 			var getObjectRequest = GetObjectRequest.builder().bucket(bucket).key(objectName).build();
-			var inputStream = s3.getObject(getObjectRequest);
+			var inputStream = this.s3.getObject(getObjectRequest);
 			return new InputStreamResource(new BufferedInputStream(inputStream));
 		}
 		catch (Throwable throwable) {

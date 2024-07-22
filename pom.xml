@@ -71,6 +71,12 @@
 			<artifactId>spring-modulith-starter-jdbc</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>apache-client</artifactId>
+			<scope>compile</scope>
+		</dependency>
+		<!--		Maven: :apache-client:2.26.3-->
+		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
