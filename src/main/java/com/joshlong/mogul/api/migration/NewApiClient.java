@@ -38,19 +38,8 @@ class NewApiClient {
 	void writeManagedFile(Long id, Resource resource) throws Exception {
 		Assert.notNull(resource, "the resource must not be null");
 		Assert.notNull(id, "the ManagedFile ID must not be null");
-		// this.httpClient
-		// .post()
-		// .uri("/managedfiles/{id}", id)
-		// .body(Map.of("file", resource))
-		// .contentType(MediaType.MULTIPART_FORM_DATA)
-		// .retrieve()
-		// .toBodilessEntity();
-		// System.out.println("posted the file ");
-
-		//
 		var headers = new HttpHeaders();
 		headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-
 		var builder = new MultipartBodyBuilder();
 		builder.part("file", resource);
 		var build = builder.build();
