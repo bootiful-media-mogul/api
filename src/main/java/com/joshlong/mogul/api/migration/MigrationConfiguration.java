@@ -2,19 +2,25 @@ package com.joshlong.mogul.api.migration;
 
 import com.joshlong.mogul.api.managedfiles.Storage;
 import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.jdbc.JdbcConnectionDetails;
 import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.graphql.client.GraphQlClient;
 import org.springframework.graphql.client.HttpSyncGraphQlClient;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.client.JettyClientHttpRequestFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestTemplate;
 
 import javax.sql.DataSource;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Configuration
@@ -39,23 +45,45 @@ class MigrationConfiguration {
 		return new Migration(storage, this.oldDb, this.newDb, publisher, oldApiClient, newApiClient);
 	}
 
-	@Bean
-	HttpSyncGraphQlClient client() {
-		var wc = RestClient.builder()
-			.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + TOKEN.get())
+	static final String MIGRATION_REST_CLIENT_QUALIFIER = "migrationRestClient";
+
+	static final String MIGRATION_REST_TEMPLATE_QUALIFIER = "migrationRestTemplate";
+
+	@Bean(MIGRATION_REST_TEMPLATE_QUALIFIER)
+	RestTemplate restTemplate(RestTemplateBuilder builder) {
+		return builder.rootUri(API_ROOT)
+			.requestCustomizers(request -> request.getHeaders().putAll(authorizationHeader()))
+			.requestFactory(JdkClientHttpRequestFactory.class)
+			.build();
+	}
+
+	private static Map<String, List<String>> authorizationHeader() {
+		return Map.of(HttpHeaders.AUTHORIZATION, List.of("Bearer " + TOKEN.get()));
+	}
+
+	@Bean(MIGRATION_REST_CLIENT_QUALIFIER)
+	RestClient migrationRestClient(RestClient.Builder builder) {
+		return builder.requestInitializer(request -> request.getHeaders().putAll(authorizationHeader()))
 			.baseUrl(API_ROOT + "/graphql")
 			.build();
-		return HttpSyncGraphQlClient.create(wc);
 	}
 
 	@Bean
-	NewApiClient newApiClient(GraphQlClient graphQlClient, JdbcClient jdbcClient) {
-		return new NewApiClient(graphQlClient, jdbcClient);
+	HttpSyncGraphQlClient httpSyncGraphQlClient(
+			@Qualifier(MIGRATION_REST_CLIENT_QUALIFIER) RestClient migrationRestClient) {
+		return HttpSyncGraphQlClient.create(migrationRestClient);
 	}
 
 	@Bean
-	OldApiClient oldApiClient(JdbcClient s) {
-		return new OldApiClient(s);
+	NewApiClient newApiClient(HttpSyncGraphQlClient httpSyncGraphQlClient, JdbcClient jdbcClient,
+			@Qualifier(MIGRATION_REST_CLIENT_QUALIFIER) RestClient restClient,
+			@Qualifier(MIGRATION_REST_TEMPLATE_QUALIFIER) RestTemplate restTemplate) {
+		return new NewApiClient(httpSyncGraphQlClient, jdbcClient, restClient, restTemplate);
+	}
+
+	@Bean
+	OldApiClient oldApiClient() {
+		return new OldApiClient(this.oldDb);
 	}
 
 	private static DataSource dataSource(String username, String password, String host, String dbSchema) {

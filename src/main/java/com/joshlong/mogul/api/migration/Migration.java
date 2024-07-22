@@ -1,7 +1,10 @@
 package com.joshlong.mogul.api.migration;
 
 import com.joshlong.mogul.api.managedfiles.Storage;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.util.Assert;
@@ -20,6 +23,8 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 class Migration {
+
+	private final Log log = LogFactory.getLog(getClass());
 
 	private final File oldManagedFileSystem = new File(SystemPropertyUtils.resolvePlaceholders("${HOME}/Desktop/old/"));
 
@@ -57,7 +62,6 @@ class Migration {
 	String start(String token) throws Exception {
 
 		MigrationConfiguration.TOKEN.set(token);
-
 		var media = this.oldApiClient.media();
 		var podcasts = this.oldApiClient.podcasts(media);
 		var sql = """
@@ -75,7 +79,7 @@ class Migration {
 		for (var podcast : podcasts)
 			migrate(destinationPodcastId, podcast);
 
-		System.out.println("finished processing all the episodes!");
+		log.debug("finished processing all the episodes!");
 		this.publisher.publishEvent(new MigratedFilesDownloadedEvent());
 		return UUID.randomUUID().toString();
 	}
@@ -115,20 +119,16 @@ class Migration {
 
 		var podcastEpisodeDraftId = this.newApiClient.createPodcastEpisodeDraft(newPodcastId, oldEpisode.title(),
 				oldEpisode.description(), oldEpisode.date());
-
 		var media = oldEpisode.media();
 		var photo = matchMediaByTag(media, "photo");
 		var intro = matchMediaByTag(media, "introduction");
 		var interview = matchMediaByTag(media, "interview");
 		var produced = matchMediaByTag(media, "produced");
-
 		var hasValidFiles = produced != null
 				|| (photo != null && intro != null && interview != null && StringUtils.hasText(photo.href())
 						&& StringUtils.hasText(intro.href()) && StringUtils.hasText(interview.href()));
-
 		if (!hasValidFiles)
 			return;
-
 		var completableFutures = new HashSet<CompletableFuture<?>>();
 		for (var m : new OldApiClient.Media[] { produced, interview, intro, photo }) {
 			if (m != null) {
@@ -137,12 +137,24 @@ class Migration {
 				completableFutures.add(completableFuture);
 			}
 		}
-
 		CompletableFuture.allOf(completableFutures.toArray(new CompletableFuture[] {})).get();
-
+		System.out.println("have all the files locally...");
 		// todo graphql client to get segments and update a segment and create a segment
 		var episode = this.newApiClient.podcastEpisodeById(podcastEpisodeDraftId);
-		System.out.println(episode);
+
+		// first write the photo to the managedFile
+		var photoFile = download(photo.href());
+		// todo write this File to the new episodes `photo` ManagedFile
+		this.newApiClient.writeManagedFile(episode.graphic().id(),
+				new FileSystemResource(Objects.requireNonNull(photoFile)));
+
+		log.debug("wrote managed file for photo for episode [" + episode.graphic().id() + "]");
+		for (var segment : episode.segments()) {
+			var audioManagedFile = segment.audio();
+			var producedAudioManagedFile = segment.producedAudio();
+
+		}
+		log.debug("got the episode " + episode);
 
 	}
 
@@ -151,7 +163,7 @@ class Migration {
 			var parts = s3Url.split("/");
 			var bucket = parts[2];
 			var key = parts[3] + "/" + parts[4];
-			var localFile = new File(oldManagedFileSystem, bucket + "/" + key);
+			var localFile = new File(this.oldManagedFileSystem, bucket + "/" + key);
 			if (localFile.length() > 0)
 				return localFile;
 
@@ -181,7 +193,7 @@ class Migration {
 
 			var good = localFile.exists() && localFile.isFile() && cl == localFile.length();
 			if (!good)
-				System.out.println("could not download " + s3Url);
+				log.warn("could not download " + s3Url);
 
 			return localFile;
 		} //

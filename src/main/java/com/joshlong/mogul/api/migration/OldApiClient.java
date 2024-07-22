@@ -63,10 +63,12 @@ class OldApiClient {
 	}
 
 	Collection<Media> media() {
-		return this.sourceJdbcClient.sql("select * from media")
+		var m = this.sourceJdbcClient.sql("select * from media")
 			.query((rs, rowNum) -> new Media(rs.getInt("id"), rs.getString("description"), rs.getString("extension"),
 					rs.getString("file_name"), rs.getString("href"), rs.getString("type")))
 			.list();
+
+		return m;
 	}
 
 }
