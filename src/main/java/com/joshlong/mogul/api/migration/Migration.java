@@ -172,7 +172,6 @@ class Migration {
 
 		} //
 		else {
-
 			var assetsRoot = new File(SystemPropertyUtils.resolvePlaceholders("${HOME}/Desktop/misc/podcast-assets/"));
 			Assert.state(assetsRoot.exists(), "the asset root exists.");
 			var introAsset = new File(assetsRoot, "intro.mp3");

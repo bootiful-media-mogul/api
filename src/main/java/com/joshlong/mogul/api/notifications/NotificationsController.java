@@ -8,6 +8,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.util.Assert;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -33,10 +34,19 @@ class NotificationsController {
 	}
 
 	@QueryMapping
-	NotificationEvent notifications() {
+	Map<String, Object> notifications() {
 		var currentMogulId = this.mogulService.getCurrentMogul().id();
 		var notificationEvents = this.events.getOrDefault(currentMogulId, new ConcurrentLinkedQueue<>());
-		return notificationEvents.poll();
+		var notification = notificationEvents.poll();
+		if (null != notification)
+			return Map.of(
+					"mogulId", Objects.requireNonNull(notification).mogulId(), //
+					"when", notification.when().getTime(), //
+					"key", notification.key(),
+					"category", notification.category(),
+					"modal", notification.modal()
+			);
+		return null;
 	}
 
 }
