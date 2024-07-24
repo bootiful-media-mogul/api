@@ -1,5 +1,7 @@
 package com.joshlong.mogul.api.migration;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.Resource;
 import org.springframework.graphql.client.HttpSyncGraphQlClient;
@@ -18,6 +20,8 @@ import java.util.Map;
 import java.util.Objects;
 
 class NewApiClient {
+
+	private final Log log = LogFactory.getLog(getClass());
 
 	private final HttpSyncGraphQlClient client;
 
@@ -144,12 +148,12 @@ class NewApiClient {
 					podcasts { id }
 				}
 				""";
-		return Long.parseLong((String) this.client.document(httpRequestDocument)
+		var entityList = (String) this.client.document(httpRequestDocument)
 			.retrieveSync("podcasts")
-			.toEntityList(new ParameterizedTypeReference<Map<String, Object>>() {
-			})
+			.toEntityList(Map.class)
 			.getFirst()
-			.get("id"));
+			.get("id");
+		return Long.parseLong(entityList);
 	}
 
 	record Episode(String[] availablePlugins, Long id, String title, String description, boolean valid,

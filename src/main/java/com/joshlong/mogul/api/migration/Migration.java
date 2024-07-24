@@ -21,6 +21,7 @@ import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 class Migration {
 
@@ -64,6 +65,7 @@ class Migration {
 		MigrationConfiguration.TOKEN.set(token);
 		var media = this.oldApiClient.media();
 		var podcasts = this.oldApiClient.podcasts(media);
+		log.info("podcasts.length = " + podcasts.size());
 		var sql = """
 				delete from managed_file_deletion_request ;
 				delete from publication ;
@@ -73,11 +75,20 @@ class Migration {
 				delete from event_publication ;
 				""";
 		this.destinationJdbcClient.sql(sql).update();
+		log.info("removed the tables.");
 
-		var destinationPodcastId = newApiClient.getPodcastId();
+		try {
+			var destinationPodcastId = this.newApiClient.getPodcastId();
+			log.info("destinationPodcastId " + destinationPodcastId);
 
-		for (var podcast : podcasts)
-			migrate(destinationPodcastId, podcast);
+			for (var podcast : podcasts) {
+				this.migrate(destinationPodcastId, podcast);
+				log.info("migrated legacy podcast #" + podcast.id());
+			}
+		}
+		catch (Throwable throwable) {
+			log.error("no idea", throwable);
+		}
 
 		log.debug("finished processing all the episodes!");
 		this.publisher.publishEvent(new MigratedFilesDownloadedEvent());
@@ -124,10 +135,12 @@ class Migration {
 		var intro = matchMediaByTag(media, "introduction");
 		var interview = matchMediaByTag(media, "interview");
 		var produced = matchMediaByTag(media, "produced");
-		var hasValidFiles = produced != null
-				|| (photo != null && intro != null && interview != null && StringUtils.hasText(photo.href())
-						&& StringUtils.hasText(intro.href()) && StringUtils.hasText(interview.href()));
+		var isProduced = produced != null;
+		var isSegmented = (photo != null && intro != null && interview != null && StringUtils.hasText(photo.href())
+				&& StringUtils.hasText(intro.href()) && StringUtils.hasText(interview.href()));
+		var hasValidFiles = isProduced || isSegmented;
 
+		log.info("hasValidFiles: " + hasValidFiles);
 		if (!hasValidFiles) {
 			log.warn("we don't have valid files for podcast " + newPodcastId + ". Returning.");
 			return;
@@ -146,33 +159,61 @@ class Migration {
 
 		// photo
 		var photoFile = download(photo.href());
-
 		write(episode.graphic().id(), photoFile);
 
-		if (produced != null) {
+		if (isProduced) {
 
 			var fileForProducedAudio = download(produced.href());
-			Assert.state(episode.segments() != null && episode.segments().length >= 0,
-					"there should be at least one audio segment");
+			Assert.state(episode.segments() != null, "there should be at least one audio segment");
 			var firstSegment = episode.segments()[0];
 			var mf = firstSegment.audio();
 			write(mf.id(), fileForProducedAudio);
+			log.debug("wrote the ManagedFile for the produced audio.");
 
 		} //
 		else {
-			// otherwise we need to add the opening bumper, the intro, the bumper, the
-			// interview, and the closing audio
-			// while also preserving the existing first segment and just appending to the
-			// collection
+
+			var assetsRoot = new File(SystemPropertyUtils.resolvePlaceholders("${HOME}/Desktop/misc/podcast-assets/"));
+			Assert.state(assetsRoot.exists(), "the asset root exists.");
+			var introAsset = new File(assetsRoot, "intro.mp3");
+			var closingAsset = new File(assetsRoot, "closing.mp3");
+			var segueAsset = new File(assetsRoot, "music-segue.mp3");
+
+			for (var f : Set.of(introAsset, closingAsset, segueAsset))
+				Assert.state(f.exists(), "the file [" + f.getAbsolutePath() + "] does not exist");
+
+			// assuming we're here..
+			var segmentAssets = new ArrayList<File>();
+			segmentAssets.add(introAsset);
+			segmentAssets.add(download(intro.href()));
+			segmentAssets.add(segueAsset);
+			segmentAssets.add(download(interview.href()));
+			segmentAssets.add(closingAsset);
+
+			var total = segmentAssets.size();
+
+			var already = episode.segments().length;
+			while (already < total) {
+				newApiClient.addPodcastEpisodeSegment(episode.id());
+				already += 1;
+			}
+
+			// refresh
+			episode = this.newApiClient.podcastEpisodeById(episode.id());
+			Assert.state(episode.segments().length == total, "there should be " + total + " segments and no more");
+			var current = 0;
+			for (var segmentFile : segmentAssets) {
+				var segment = episode.segments()[current];
+				write(segment.audio().id(), segmentFile);
+				current += 1;
+
+			}
+			Assert.state(
+					Stream.of(this.newApiClient.podcastEpisodeById(episode.id()).segments())
+						.allMatch(segment -> segment.audio().written()),
+					"all the segments for this " + "given episode should have been written.");
 		}
-		// log.debug("wrote managed file for photo for episode [" + episode.graphic().id()
-		// + "]");
-		// for (var segment : episode.segments()) {
-		// var audioManagedFile = segment.audio();
-		// var producedAudioManagedFile = segment.producedAudio();
-		//
-		//
-		// }
+
 		log.debug("got the episode " + episode);
 
 	}

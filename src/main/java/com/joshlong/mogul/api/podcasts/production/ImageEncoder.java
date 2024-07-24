@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 
 @Component
 class ImageEncoder implements Encoder, ApplicationListener<ApplicationReadyEvent> {
@@ -38,9 +39,9 @@ class ImageEncoder implements Encoder, ApplicationListener<ApplicationReadyEvent
 	@Override
 	public File encode(File path) {
 		try {
-			var output = isValidImage(path)
-					? Files.copy(path.toPath(), new File(path.getParentFile(), "copy.jpg").toPath()).toFile()
-					: scale(convertFileToJpeg(path));
+			var output = isValidImage(path) ? Files
+				.copy(path.toPath(), new File(path.getParentFile(), "copy-" + UUID.randomUUID() + ".jpg").toPath())
+				.toFile() : scale(convertFileToJpeg(path));
 			Assert.state(isValidSize(output),
 					"the output image [" + path.getAbsolutePath() + "] must be of the right file size");
 			log.debug("in: {}{}out: {}{}", path.getAbsolutePath(), System.lineSeparator(), output.getAbsolutePath(),

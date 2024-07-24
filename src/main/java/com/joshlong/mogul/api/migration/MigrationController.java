@@ -1,5 +1,7 @@
 package com.joshlong.mogul.api.migration;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -16,6 +18,8 @@ import java.util.concurrent.Executors;
 @Controller
 class MigrationController {
 
+	private final Log log = LogFactory.getLog(getClass());
+
 	private final Migration migration;
 
 	private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -30,11 +34,12 @@ class MigrationController {
 			.getContextHolderStrategy() //
 			.getContext() //
 			.getAuthentication();
+
 		var token = authentication.getToken().getTokenValue();
 		this.executor.submit(() -> {
 			try {
 				this.migration.start(token);
-				System.out.println("finished migration!");
+				log.info("finished migration!");
 			} //
 			catch (Exception e) {
 				throw new RuntimeException(e);

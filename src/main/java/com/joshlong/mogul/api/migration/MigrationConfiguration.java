@@ -51,17 +51,22 @@ class MigrationConfiguration {
 	static final String MIGRATION_REST_TEMPLATE_QUALIFIER = "migrationRestTemplate";
 
 	@Bean(MIGRATION_REST_TEMPLATE_QUALIFIER)
-	RestTemplate restTemplate(RestTemplateBuilder builder) {
-		return builder.rootUri(API_ROOT)
+	RestTemplate migrationRestTemplate(RestTemplateBuilder builder) {
+		return builder//
+			.rootUri(API_ROOT)
+			.requestFactory(JdkClientHttpRequestFactory.class)
 			.requestCustomizers(
 					request -> request.getHeaders().put(HttpHeaders.AUTHORIZATION, List.of("Bearer " + TOKEN.get())))
-			.requestFactory(JdkClientHttpRequestFactory.class)
 			.build();
 	}
 
 	@Bean(MIGRATION_REST_CLIENT_QUALIFIER)
-	RestClient migrationRestClient(@Qualifier(MIGRATION_REST_TEMPLATE_QUALIFIER) RestTemplate restTemplate) {
-		return RestClient.builder(restTemplate).build();
+	RestClient migrationRestClient(RestClient.Builder builder) {
+		return builder.baseUrl(API_ROOT + "/graphql")
+			.requestFactory(new JdkClientHttpRequestFactory())
+			.requestInitializer(
+					request -> request.getHeaders().put(HttpHeaders.AUTHORIZATION, List.of("Bearer " + TOKEN.get())))
+			.build();
 	}
 
 	@Bean

@@ -84,23 +84,26 @@ class DefaultPodcastService implements PodcastService {
 			var episodeId = all.iterator().next();
 			var episode = getEpisodeById(episodeId);
 			var segments = getEpisodeSegmentsByEpisode(episodeId);
-			if (episode.graphic().id().equals(mf.id())) { // either its the graphic
+			if (episode.graphic().id().equals(mf.id())) { // either it's the graphic..
 				this.mediaNormalizer
 					.normalize(new MediaNormalizationIntegrationRequest(episode.graphic(), episode.producedGraphic()));
 			} //
 			else {
-				// or its one of the segments
-				segments.stream().filter(s -> s.audio().id().equals(mf.id())).findAny().ifPresent(segment -> {
-					var response = this.mediaNormalizer
-						.normalize(new MediaNormalizationIntegrationRequest(segment.audio(), segment.producedAudio()));
-					Assert.notNull(response, "the response should not be null");
-					var updated = new Date();
-					// if this is older than the last time we have produced any audio,
-					// then we won't reproduce the audio
-					db.sql("update podcast_episode  set produced_audio_assets_updated = ? where    id = ? ")
-						.params(updated, episodeId)
-						.update();
-				});
+				// or it's one of the segments..
+				segments.stream()//
+					.filter(s -> s.audio().id().equals(mf.id()))
+					.findAny()
+					.ifPresent(segment -> {
+						var response = this.mediaNormalizer.normalize(
+								new MediaNormalizationIntegrationRequest(segment.audio(), segment.producedAudio()));
+						Assert.notNull(response, "the response should not be null");
+						var updated = new Date();
+						// if this is older than the last time we have produced any audio,
+						// then we won't reproduce the audio
+						db.sql("update podcast_episode  set produced_audio_assets_updated = ? where    id = ? ")
+							.params(updated, episodeId)
+							.update();
+					});
 			}
 			// once the file has been normalized, we can worry about completeness
 			this.refreshPodcastEpisodeCompleteness(episodeId);
