@@ -38,7 +38,7 @@ class MigrationController {
 		var token = authentication.getToken().getTokenValue();
 		this.executor.submit(() -> {
 			try {
-				this.migration.start(token);
+				this.migration.migrateAllPodcasts(true, token);
 				log.info("finished migration!");
 			} //
 			catch (Exception e) {

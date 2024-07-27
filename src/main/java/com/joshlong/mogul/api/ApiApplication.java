@@ -77,8 +77,8 @@ public class ApiApplication {
 
 }
 
-@RegisterReflectionForBinding(ProblemDetail.class)
 @ControllerAdvice
+@RegisterReflectionForBinding(ProblemDetail.class)
 class AsyncRequestTimeoutExceptionHandler {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());

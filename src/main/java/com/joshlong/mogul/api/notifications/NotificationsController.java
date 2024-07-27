@@ -39,13 +39,9 @@ class NotificationsController {
 		var notificationEvents = this.events.getOrDefault(currentMogulId, new ConcurrentLinkedQueue<>());
 		var notification = notificationEvents.poll();
 		if (null != notification)
-			return Map.of(
-					"mogulId", Objects.requireNonNull(notification).mogulId(), //
+			return Map.of("mogulId", Objects.requireNonNull(notification).mogulId(), //
 					"when", notification.when().getTime(), //
-					"key", notification.key(),
-					"category", notification.category(),
-					"modal", notification.modal()
-			);
+					"key", notification.key(), "category", notification.category(), "modal", notification.modal());
 		return null;
 	}
 

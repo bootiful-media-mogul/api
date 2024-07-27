@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.migration;
 
+import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.managedfiles.Storage;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -14,6 +15,7 @@ import org.springframework.graphql.client.HttpSyncGraphQlClient;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
@@ -21,6 +23,7 @@ import javax.sql.DataSource;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
+@EnableAsync
 @Configuration
 class MigrationConfiguration {
 
@@ -42,8 +45,8 @@ class MigrationConfiguration {
 
 	@Bean
 	Migration migration(Storage storage, ApplicationEventPublisher publisher, OldApiClient oldApiClient,
-			NewApiClient newApiClient) {
-		return new Migration(storage, this.oldDb, this.newDb, publisher, oldApiClient, newApiClient);
+			ManagedFileService mfs, NewApiClient newApiClient) {
+		return new Migration(mfs, storage, this.newDb, publisher, oldApiClient, newApiClient);
 	}
 
 	static final String MIGRATION_REST_CLIENT_QUALIFIER = "migrationRestClient";

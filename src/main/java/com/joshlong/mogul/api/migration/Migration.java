@@ -1,12 +1,20 @@
 package com.joshlong.mogul.api.migration;
 
+import com.joshlong.mogul.api.managedfiles.CommonMediaTypes;
+import com.joshlong.mogul.api.managedfiles.ManagedFile;
+import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.managedfiles.Storage;
+import com.joshlong.mogul.api.utils.JsonUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.modulith.events.ApplicationModuleListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
 import org.springframework.util.StringUtils;
@@ -18,25 +26,29 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 class Migration {
 
 	private final Log log = LogFactory.getLog(getClass());
 
-	private final File oldManagedFileSystem = new File(SystemPropertyUtils.resolvePlaceholders("${HOME}/Desktop/old/"));
+	private final ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 
-	private final Set<IncompleteFileEvent> incompleteFileEvents = new ConcurrentSkipListSet<>(
-			Comparator.comparing(IncompleteFileEvent::s3Url));
+	private final String fsRoot = "${HOME}/Desktop/mogul-migration";
 
-	private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+	private final File existingS3Files = new File(
+			SystemPropertyUtils.resolvePlaceholders(this.fsRoot + "/existing-s3-files/"));
 
-	private final JdbcClient sourceJdbcClient, destinationJdbcClient;
+	private final File managedFileLog = new File(
+			SystemPropertyUtils.resolvePlaceholders("${HOME}/Desktop/enqueuedManagedFileWrites"));
 
-	private final Function<OldApiClient.Media, File> mediaDownloader;
+	private final Set<ManagedFileWrite> managedFileWrites = new ConcurrentSkipListSet<>(
+			Comparator.comparing(ManagedFileWrite::managedFileId));
+
+	private final ManagedFileService managedFileService;
+
+	private final JdbcClient destinationJdbcClient;
 
 	private final Storage storage;
 
@@ -46,38 +58,104 @@ class Migration {
 
 	private final NewApiClient newApiClient;
 
-	Migration(Storage storage, JdbcClient sourceJdbcClient, JdbcClient destinationJdbcClient,
+	Migration(ManagedFileService managedFileService, Storage storage, JdbcClient destinationJdbcClient,
 			ApplicationEventPublisher publisher, OldApiClient oldApiClient, NewApiClient newApiClient) {
+		this.managedFileService = managedFileService;
 		this.storage = storage;
 		this.publisher = publisher;
 		this.oldApiClient = oldApiClient;
 		this.newApiClient = newApiClient;
-		this.sourceJdbcClient = sourceJdbcClient;
 		this.destinationJdbcClient = destinationJdbcClient;
-		this.mediaDownloader = media -> download(media.href());
 
-		Assert.state(this.oldManagedFileSystem.exists() || this.oldManagedFileSystem.mkdirs(),
-				"the directory [" + this.oldManagedFileSystem.getAbsolutePath() + "] does not exist");
+		Assert.state(this.existingS3Files.exists() || this.existingS3Files.mkdirs(),
+				"the directory [" + this.existingS3Files.getAbsolutePath() + "] does not exist");
 	}
 
-	String start(String token) throws Exception {
+	private ManagedFile writeManagedFileToS3(Long managedFileId, String originalFileName, Resource resource) {
+		var mediaType = CommonMediaTypes.guess(resource);
+		this.managedFileService.write(managedFileId, originalFileName, mediaType, resource);
+		var updated = this.managedFileService.getManagedFile(managedFileId);
+		Assert.state(updated.written(), "the managedFile is written!");
+		return updated;
+	}
 
-		MigrationConfiguration.TOKEN.set(token);
-		var media = this.oldApiClient.media();
-		var podcasts = this.oldApiClient.podcasts(media);
-		log.info("podcasts.length = " + podcasts.size());
-		var sql = """
-				delete from managed_file_deletion_request ;
-				delete from publication ;
-				delete from podcast_episode_segment ;
-				delete from podcast_episode ;
-				delete from managed_file ;
-				delete from event_publication ;
-				""";
-		this.destinationJdbcClient.sql(sql).update();
-		log.info("removed the tables.");
+	@Async
+	@EventListener(ManagedFilesReadyForWriteEvent.class)
+	void afterMigration() throws Exception {
+		writePendingManagedFilesListener();
+	}
 
+	@EventListener({ ApplicationReadyEvent.class })
+	void afterLoad() throws Exception {
+		writePendingManagedFilesListener();
+	}
+
+	void writePendingManagedFilesListener() throws Exception {
+		System.out.println("invoking..");
+		if (!this.managedFileLog.exists()) {
+			log.warn("the managed s3 log [" + this.managedFileLog.getAbsolutePath() + "] does not exist!");
+			return;
+		}
+		var pendingManagedFileWrites = this.readPendingManagedFileWriteLog();
+		var arrayOfCompletableFutures = new CompletableFuture[pendingManagedFileWrites.size()];
+		var ctr = 0;
+		for (var managedFileWrite : pendingManagedFileWrites) {
+			var s3Source = managedFileWrite.s3();
+			var managedFileToConnectItTo = managedFileWrite.managedFileId();
+			arrayOfCompletableFutures[ctr] = CompletableFuture.runAsync(() -> {
+				var file = this.download(s3Source);
+				log.info("downloaded " + s3Source + " to " + file.getAbsolutePath() + '.');
+				this.writeManagedFileToS3(managedFileToConnectItTo, file.getName(), new FileSystemResource(file));
+			}, this.executor);
+			ctr += 1;
+		}
+		CompletableFuture.allOf(arrayOfCompletableFutures);
+	}
+
+	private ArrayList<ManagedFileWrite> readPendingManagedFileWriteLog() throws IOException {
+		Assert.state(this.managedFileLog.exists(),
+				"the managed s3 log [" + this.managedFileLog.getAbsolutePath() + "] does not exist");
+		var files = new ArrayList<ManagedFileWrite>();
+		try (var fin = new BufferedReader(new FileReader(this.managedFileLog))) {
+			var contents = FileCopyUtils.copyToString(fin);
+			// @formatter:off
+			var read = JsonUtils.read(contents,
+				new ParameterizedTypeReference<Collection<Map<String, Object>>>() {});
+			// @formatter:on
+			for (var r : read) {
+				var managedFileWrite = new ManagedFileWrite(((Integer) r.get("managedFileId")).longValue(),
+						((String) r.get("s3")));
+				files.add(managedFileWrite);
+			}
+		}
+		log.debug("there are " + files.size() + " files to read and synchronize to S3");
+		return files;
+	}
+
+	/**
+	 * this gets called from online with access to a token
+	 */
+	void migrateAllPodcasts(boolean reset, String token) {
 		try {
+			MigrationConfiguration.TOKEN.set(token);
+			var media = this.oldApiClient.media();
+			var podcasts = this.oldApiClient.podcasts(media);
+			log.info("podcasts.length = " + podcasts.size());
+			if (reset) {
+				Assert.state(!this.managedFileLog.exists() || this.managedFileLog.delete(),
+						"the managed s3 log, " + this.managedFileLog.getAbsolutePath() + ", was not reset");
+				var sql = """
+							delete from managed_file_deletion_request ;
+							delete from publication ;
+							delete from podcast_episode_segment ;
+							delete from podcast_episode ;
+							delete from managed_file ;
+							delete from event_publication ;
+						""";
+				this.destinationJdbcClient.sql(sql).update();
+				log.info("removed the tables.");
+			}
+
 			var destinationPodcastId = this.newApiClient.getPodcastId();
 			log.info("destinationPodcastId " + destinationPodcastId);
 
@@ -85,36 +163,15 @@ class Migration {
 				this.migrate(destinationPodcastId, podcast);
 				log.info("migrated legacy podcast #" + podcast.id());
 			}
-		}
+			try (var fw = new BufferedWriter(new FileWriter(this.managedFileLog))) {
+				fw.write(JsonUtils.write(this.managedFileWrites));
+			}
+			this.publisher.publishEvent(new ManagedFilesReadyForWriteEvent());
+
+		} //
 		catch (Throwable throwable) {
 			log.error("no idea", throwable);
-		}
-
-		log.debug("finished processing all the episodes!");
-		this.publisher.publishEvent(new MigratedFilesDownloadedEvent());
-		return UUID.randomUUID().toString();
-	}
-
-	record IncompleteFileEvent(File file, String s3Url) {
-
-	}
-
-	record MigratedFilesDownloadedEvent() {
-
-	}
-
-	@ApplicationModuleListener
-	void incompleteFileEvent(IncompleteFileEvent incompleteFileEvent) {
-		this.incompleteFileEvents.add(incompleteFileEvent);
-	}
-
-	@ApplicationModuleListener
-	void finished(MigratedFilesDownloadedEvent m) throws Exception {
-		var lines = this.incompleteFileEvents.stream()
-			.map(ife -> ife.s3Url() + ":" + ife.file())
-			.collect(Collectors.joining(System.lineSeparator()));
-		try (var fw = new FileWriter(SystemPropertyUtils.resolvePlaceholders("${HOME}/Desktop/missing.txt"))) {
-			FileCopyUtils.copy(lines, fw);
+			throw new RuntimeException(throwable);
 		}
 	}
 
@@ -127,73 +184,52 @@ class Migration {
 	}
 
 	private void migrate(Long newPodcastId, OldApiClient.Podcast oldEpisode) throws Exception {
-
 		var podcastEpisodeDraftId = this.newApiClient.createPodcastEpisodeDraft(newPodcastId, oldEpisode.title(),
 				oldEpisode.description(), oldEpisode.date());
 		var media = oldEpisode.media();
-		var photo = matchMediaByTag(media, "photo");
-		var intro = matchMediaByTag(media, "introduction");
-		var interview = matchMediaByTag(media, "interview");
-		var produced = matchMediaByTag(media, "produced");
-		var isProduced = produced != null;
-		var isSegmented = (photo != null && intro != null && interview != null && StringUtils.hasText(photo.href())
-				&& StringUtils.hasText(intro.href()) && StringUtils.hasText(interview.href()));
+		var photoMedia = this.matchMediaByTag(media, "photo");
+		var introMedia = this.matchMediaByTag(media, "introduction");
+		var interviewMedia = this.matchMediaByTag(media, "interview");
+		var producedMedia = this.matchMediaByTag(media, "produced");
+		var isProduced = producedMedia != null;
+		var isSegmented = Stream.of(introMedia, interviewMedia)
+			.allMatch(m -> m != null && StringUtils.hasText(m.href()));
 		var hasValidFiles = isProduced || isSegmented;
-
-		log.info("hasValidFiles: " + hasValidFiles);
 		if (!hasValidFiles) {
 			log.warn("we don't have valid files for podcast " + newPodcastId + ". Returning.");
 			return;
 		}
-		var completableFutures = new HashSet<CompletableFuture<?>>();
-		for (var m : new OldApiClient.Media[] { produced, interview, intro, photo }) {
-			if (m != null) {
-				var completableFuture = CompletableFuture.supplyAsync(() -> this.mediaDownloader.apply(m),
-						this.executor);
-				completableFutures.add(completableFuture);
-			}
-		}
-		CompletableFuture.allOf(completableFutures.toArray(new CompletableFuture[] {})).get();
-		System.out.println("have all the files locally...");
+
+		log.info("have all the files locally...");
 		var episode = this.newApiClient.podcastEpisodeById(podcastEpisodeDraftId);
-
-		// photo
-		var photoFile = download(photo.href());
-		write(episode.graphic().id(), photoFile);
-
+		this.registerWrite(episode.graphic().id(), photoMedia.href());
 		if (isProduced) {
-
-			var fileForProducedAudio = download(produced.href());
 			Assert.state(episode.segments() != null, "there should be at least one audio segment");
 			var firstSegment = episode.segments()[0];
 			var mf = firstSegment.audio();
-			write(mf.id(), fileForProducedAudio);
+			this.registerWrite(mf.id(), producedMedia.href());
 			log.debug("wrote the ManagedFile for the produced audio.");
-
 		} //
 		else {
 			var assetsRoot = new File(SystemPropertyUtils.resolvePlaceholders("${HOME}/Desktop/misc/podcast-assets/"));
 			Assert.state(assetsRoot.exists(), "the asset root exists.");
-			var introAsset = new File(assetsRoot, "intro.mp3");
-			var closingAsset = new File(assetsRoot, "closing.mp3");
-			var segueAsset = new File(assetsRoot, "music-segue.mp3");
+			var assetsS3Root = "s3://podcast-assets-bucket/062019/";
+			var introAsset = assetsS3Root + "intro.mp3";
+			var closingAsset = assetsS3Root + "closing.mp3";
+			var segueAsset = assetsS3Root + "music-segue.mp3";
 
-			for (var f : Set.of(introAsset, closingAsset, segueAsset))
-				Assert.state(f.exists(), "the file [" + f.getAbsolutePath() + "] does not exist");
+			var segmentFiles = new ArrayList<String>();
+			segmentFiles.add(introAsset);
+			segmentFiles.add((introMedia.href()));
+			segmentFiles.add(segueAsset);
+			segmentFiles.add((interviewMedia.href()));
+			segmentFiles.add(closingAsset);
 
-			// assuming we're here..
-			var segmentAssets = new ArrayList<File>();
-			segmentAssets.add(introAsset);
-			segmentAssets.add(download(intro.href()));
-			segmentAssets.add(segueAsset);
-			segmentAssets.add(download(interview.href()));
-			segmentAssets.add(closingAsset);
-
-			var total = segmentAssets.size();
+			var total = segmentFiles.size();
 
 			var already = episode.segments().length;
 			while (already < total) {
-				newApiClient.addPodcastEpisodeSegment(episode.id());
+				this.newApiClient.addPodcastEpisodeSegment(episode.id());
 				already += 1;
 			}
 
@@ -201,24 +237,21 @@ class Migration {
 			episode = this.newApiClient.podcastEpisodeById(episode.id());
 			Assert.state(episode.segments().length == total, "there should be " + total + " segments and no more");
 			var current = 0;
-			for (var segmentFile : segmentAssets) {
+
+			for (var segmentFile : segmentFiles) {
 				var segment = episode.segments()[current];
-				write(segment.audio().id(), segmentFile);
+				this.registerWrite(segment.audio().id(), segmentFile);
 				current += 1;
-
 			}
-			Assert.state(
-					Stream.of(this.newApiClient.podcastEpisodeById(episode.id()).segments())
-						.allMatch(segment -> segment.audio().written()),
-					"all the segments for this " + "given episode should have been written.");
 		}
-
 		log.debug("got the episode " + episode);
-
 	}
 
-	private void write(Long mfId, File file) throws Exception {
-		this.newApiClient.writeManagedFile(mfId, new FileSystemResource(Objects.requireNonNull(file)));
+	// record that we need to get an s3 artifact and upload it to the new managedFile
+	// system..
+	private void registerWrite(Long managedFileId, String s3) {
+		var mfw = new ManagedFileWrite(managedFileId, s3);
+		this.managedFileWrites.add(mfw);
 	}
 
 	private File download(String s3Url) {
@@ -226,11 +259,11 @@ class Migration {
 			var parts = s3Url.split("/");
 			var bucket = parts[2];
 			var key = parts[3] + "/" + parts[4];
-			var localFile = new File(this.oldManagedFileSystem, bucket + "/" + key);
+			var localFile = new File(this.existingS3Files, bucket + "/" + key);
 			if (localFile.length() > 0)
 				return localFile;
 
-			var read = storage.read(bucket, key);
+			var read = this.storage.read(bucket, key);
 
 			if (null == read)
 				return null;
@@ -238,20 +271,20 @@ class Migration {
 			var cl = read.contentLength();
 
 			if (!localFile.exists() || (cl != localFile.length())) {
-				System.out.println("contentLength: " + cl + ":" + localFile.length());
-				System.out.println("downloading [" + localFile.getAbsolutePath() + "] on ["
-						+ Thread.currentThread().getName() + "].");
+				log.info("contentLength: " + cl + ":" + localFile.length());
+				log.info("downloading [" + localFile.getAbsolutePath() + "] on [" + Thread.currentThread().getName()
+						+ "].");
 				var directory = localFile.getParentFile();
 				if (!directory.exists())
 					directory.mkdirs();
 				Assert.state(directory.exists(), "the directory [" + directory.getAbsolutePath() + "] does not exist");
 
-				read = storage.read(bucket, key); // don't want to work on the same
+				read = this.storage.read(bucket, key); // don't want to work on the same
 				try (var in = new BufferedInputStream(read.getInputStream());
 						var out = new BufferedOutputStream(new FileOutputStream(localFile))) {
 					FileCopyUtils.copy(in, out);
 				}
-				Assert.state(localFile.exists(), "the local file must exist now, but doesn't");
+				Assert.state(localFile.exists(), "the local s3 must exist now, but doesn't");
 			}
 
 			var good = localFile.exists() && localFile.isFile() && cl == localFile.length();
@@ -265,4 +298,10 @@ class Migration {
 		}
 	}
 
+}
+
+record ManagedFileWrite(Long managedFileId, String s3) {
+}
+
+record ManagedFilesReadyForWriteEvent() {
 }

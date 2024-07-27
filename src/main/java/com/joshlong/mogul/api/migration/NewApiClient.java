@@ -45,7 +45,7 @@ class NewApiClient {
 		var headers = new HttpHeaders();
 		headers.setContentType(MediaType.MULTIPART_FORM_DATA);
 		var builder = new MultipartBodyBuilder();
-		builder.part("file", resource);
+		builder.part("s3", resource);
 		var build = builder.build();
 		var httpEntity = new HttpEntity<>(build, headers);
 		this.restTemplate.exchange("/managedfiles/{id}", HttpMethod.POST, httpEntity, String.class, id);
