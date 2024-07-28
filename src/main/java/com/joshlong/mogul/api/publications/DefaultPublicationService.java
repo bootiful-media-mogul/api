@@ -23,9 +23,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
-record SettingsLookup(Long mogulId, String category) {
-}
-
 @Configuration
 @RegisterReflectionForBinding(com.joshlong.mogul.api.podcasts.Episode.class)
 class DefaultPublicationServiceConfiguration {
@@ -34,17 +31,26 @@ class DefaultPublicationServiceConfiguration {
 	DefaultPublicationService defaultPublicationService(JdbcClient client, MogulService mogulService,
 			TextEncryptor textEncryptor, Settings settings, Map<String, PublisherPlugin<?>> plugins,
 			ObjectMapper objectMapper) {
-		return new DefaultPublicationService(client, mogulService, textEncryptor,
-				settingsLookup -> settings.getAllValuesByCategory(settingsLookup.mogulId(), settingsLookup.category()),
-				plugins, objectMapper);
+		var lookup = new SettingsLookupClient(settings);
+		return new DefaultPublicationService(client, mogulService, textEncryptor, lookup, plugins, objectMapper);
 	}
 
 }
 
+// todo remove the word public here. it's only being used to support the one time
+// migration
 @Transactional
-class DefaultPublicationService implements PublicationService {
+@RegisterReflectionForBinding({ Publishable.class, PublisherPlugin.class })
+public class DefaultPublicationService implements PublicationService {
+
+	public record SettingsLookup(Long mogulId, String category) {
+	}
+
+	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	private final Map<String, PublisherPlugin<?>> plugins = new ConcurrentHashMap<>();
+
+	private final Function<SettingsLookup, Map<String, String>> settingsLookup;
 
 	private final JdbcClient db;
 
@@ -52,17 +58,14 @@ class DefaultPublicationService implements PublicationService {
 
 	private final RowMapper<Publication> publicationRowMapper;
 
-	private final Logger log = LoggerFactory.getLogger(getClass());
-
 	private final TextEncryptor textEncryptor;
 
-	private final Function<SettingsLookup, Map<String, String>> settingsLookupMapSupplier;
-
-	DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
+	// todo remove the word public
+	public DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
 			Function<SettingsLookup, Map<String, String>> settingsLookup, Map<String, PublisherPlugin<?>> plugins,
 			ObjectMapper objectMapper) {
 		this.db = db;
-		this.settingsLookupMapSupplier = settingsLookup;
+		this.settingsLookup = settingsLookup;
 		this.mogulService = mogulService;
 		this.textEncryptor = textEncryptor;
 		this.plugins.putAll(plugins);
@@ -70,9 +73,8 @@ class DefaultPublicationService implements PublicationService {
 		Assert.notNull(this.db, "the JdbcClient must not be null");
 		Assert.notNull(this.mogulService, "the mogulService must not be null");
 		Assert.notNull(this.textEncryptor, "the textEncryptor must not be null");
-		Assert.notNull(this.settingsLookupMapSupplier, "the settings must not be null");
+		Assert.notNull(this.settingsLookup, "the settings must not be null");
 		Assert.state(!this.plugins.isEmpty(), "there are no plugins for publication");
-		Assert.notNull(this.publicationRowMapper, "the settings must not be null");
 	}
 
 	@Override
@@ -82,7 +84,7 @@ class DefaultPublicationService implements PublicationService {
 		Assert.notNull(plugin, "the plugin must not be null");
 		Assert.notNull(payload, "the payload must not be null");
 		Assert.notNull(mogul, "the mogul should not be null");
-		var configuration = this.settingsLookupMapSupplier
+		var configuration = this.settingsLookup
 			.apply(new SettingsLookup(this.mogulService.getCurrentMogul().id(), plugin.name()));
 		var context = new ConcurrentHashMap<String, String>();
 		context.putAll(configuration);

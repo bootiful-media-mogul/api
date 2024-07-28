@@ -22,15 +22,18 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
+// todo remove the public keyword
 @Component(PodbeanPodcastEpisodePublisherPlugin.PLUGIN_NAME)
-class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlugin, BeanNameAware {
+public class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlugin, BeanNameAware {
 
 	/**
 	 * well known values written to the context after publication.
 	 */
-	static final String CONTEXT_PODBEAN_PODCAST_ID = "podbeanPodcastId";
-	static final String CONTEXT_PODBEAN_EPISODE_ID = "podbeanEpisodeId";
-	static final String CONTEXT_PODBEAN_EPISODE_PUBLISH_DATE_IN_MILLISECONDS = "podbeanEpisodeId";
+	public static final String CONTEXT_PODBEAN_PODCAST_ID = "podbeanPodcastId";
+
+	public static final String CONTEXT_PODBEAN_EPISODE_ID = "podbeanEpisodeId";
+
+	public static final String CONTEXT_PODBEAN_EPISODE_PUBLISH_DATE_IN_MILLISECONDS = "contextPodbeanEpisodePublishDateInMilliseconds";
 
 	public static final String PLUGIN_NAME = "podbean";
 
@@ -42,7 +45,7 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 
 	private final PodbeanClient podbeanClient;
 
-	PodbeanPodcastEpisodePublisherPlugin(ManagedFileService managedFileService, PodbeanClient podbeanClient) {
+	public PodbeanPodcastEpisodePublisherPlugin(ManagedFileService managedFileService, PodbeanClient podbeanClient) {
 		this.managedFileService = managedFileService;
 		this.podbeanClient = podbeanClient;
 	}

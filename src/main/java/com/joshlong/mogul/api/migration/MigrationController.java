@@ -35,10 +35,12 @@ class MigrationController {
 			.getContext() //
 			.getAuthentication();
 
+		var mogul = SecurityContextHolder.getContextHolderStrategy().getContext();
 		var token = authentication.getToken().getTokenValue();
 		this.executor.submit(() -> {
 			try {
-				this.migration.migrateAllPodcasts(true, token);
+				SecurityContextHolder.getContextHolderStrategy().setContext(mogul);
+				this.migration.migrateAllPodcasts(false, token);
 				log.info("finished migration!");
 			} //
 			catch (Exception e) {

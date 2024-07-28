@@ -91,7 +91,7 @@ class PodcastController {
 		var mogul = this.mogulService.getCurrentMogul();
 		var plugins = new HashSet<String>();
 		for (var pluginName : this.plugins.keySet()) {
-			var configuration = settings.getAllValuesByCategory(mogul.id(), pluginName);
+			var configuration = this.settings.getAllValuesByCategory(mogul.id(), pluginName);
 			var plugin = this.plugins.get(pluginName);
 			if (plugin.canPublish(configuration, episode)) {
 				plugins.add(plugin.name());

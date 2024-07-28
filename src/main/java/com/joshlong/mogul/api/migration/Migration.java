@@ -1,10 +1,20 @@
 package com.joshlong.mogul.api.migration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.joshlong.mogul.api.PublisherPlugin;
+import com.joshlong.mogul.api.Settings;
 import com.joshlong.mogul.api.managedfiles.CommonMediaTypes;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.managedfiles.Storage;
+import com.joshlong.mogul.api.mogul.MogulService;
+import com.joshlong.mogul.api.podcasts.publication.PodbeanPodcastEpisodePublisherPlugin;
+import com.joshlong.mogul.api.publications.DefaultPublicationService;
+import com.joshlong.mogul.api.publications.PublicationService;
+import com.joshlong.mogul.api.publications.SettingsLookupClient;
 import com.joshlong.mogul.api.utils.JsonUtils;
+import com.joshlong.podbean.Episode;
+import com.joshlong.podbean.PodbeanClient;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -14,7 +24,9 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.scheduling.annotation.Async;
+import org.springframework.security.crypto.encrypt.TextEncryptor;
 import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
 import org.springframework.util.StringUtils;
@@ -22,14 +34,16 @@ import org.springframework.util.SystemPropertyUtils;
 
 import java.io.*;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.joshlong.mogul.api.podcasts.publication.PodbeanPodcastEpisodePublisherPlugin.*;
+
 class Migration {
+
+	private final PublicationService defaultPublicationService;
 
 	private final Log log = LogFactory.getLog(getClass());
 
@@ -54,40 +68,122 @@ class Migration {
 
 	private final ApplicationEventPublisher publisher;
 
+	private final TextEncryptor textEncryptor;
+
 	private final OldApiClient oldApiClient;
+
+	/**
+	 * this gets called from online with access to a token
+	 */
+	public void migrateAllPodcasts(boolean reset, String token) {
+		try {
+			MigrationConfiguration.TOKEN.set(token);
+			var media = this.oldApiClient.media();
+			var podcasts = this.oldApiClient.podcasts(media);
+			log.info("podcasts.length = " + podcasts.size());
+			if (reset) {
+				Assert.state(!this.managedFileLog.exists() || this.managedFileLog.delete(),
+						"the managed s3 log, " + this.managedFileLog.getAbsolutePath() + ", was not reset");
+				var sql = """
+							delete from managed_file_deletion_request ;
+							delete from publication ;
+							delete from podcast_episode_segment ;
+							delete from podcast_episode ;
+							delete from managed_file ;
+							delete from event_publication ;
+						""";
+				this.destinationJdbcClient.sql(sql).update();
+				log.info("removed the tables.");
+			}
+
+			var destinationPodcastId = this.newApiClient.getPodcastId();
+			log.info("destinationPodcastId " + destinationPodcastId);
+			var podbeanEpisodes = podbeanClient.getAllEpisodes();
+			var podcastsToPodbeanEpisodes = new HashMap<OldApiClient.Podcast, Episode>();
+			for (var podcast : podcasts) {
+				var title = podcast.title();
+				var episode = podbeanEpisodes.stream().filter(e -> e.getTitle().equalsIgnoreCase(title)).findAny();
+				episode.ifPresent(value -> podcastsToPodbeanEpisodes.put(podcast, value));
+				log.info("migrated legacy podcast #" + podcast.id());
+
+			}
+
+			record MogulEpisode(Long episodeId, String title) {
+			}
+
+			var mogulEpisodes = this.destinationJdbcClient.sql("select id ,title from mogul.public.podcast_episode")
+				.query((rs, rowNum) -> new MogulEpisode(rs.getLong("id"), rs.getString("title")))
+				.list()
+				.stream()
+				.collect(Collectors.toMap(MogulEpisode::title, e -> e));
+
+			podcastsToPodbeanEpisodes.forEach((podcast, episode) -> {
+				var mogulEpisodeId = mogulEpisodes.get(podcast.title()).episodeId();
+				this.publish(episode.getPodcastId(), episode.getId(), mogulEpisodeId);
+			});
+
+			System.out.println("size:" + podcastsToPodbeanEpisodes.size());
+
+			// try (var fw = new BufferedWriter(new FileWriter(this.managedFileLog))) {
+			// fw.write(JsonUtils.write(this.managedFileWrites));
+			// }
+			//
+			// this.publisher.publishEvent(new ManagedFilesReadyForWriteEvent());
+
+		} //
+		catch (Throwable throwable) {
+			log.error("no idea", throwable);
+			throw new RuntimeException(throwable);
+		}
+	}
 
 	private final NewApiClient newApiClient;
 
+	private final PodbeanClient podbeanClient;
+
+	private final SettingsLookupClient lookup;
+
 	Migration(ManagedFileService managedFileService, Storage storage, JdbcClient destinationJdbcClient,
-			ApplicationEventPublisher publisher, OldApiClient oldApiClient, NewApiClient newApiClient) {
+			ApplicationEventPublisher publisher, OldApiClient oldApiClient, NewApiClient newApiClient,
+			MogulService mogulService, Settings settings, TextEncryptor textEncryptor,
+			Map<String, PublisherPlugin<?>> pluginMap, ObjectMapper objectMapper, PodbeanClient podbeanClient) {
 		this.managedFileService = managedFileService;
 		this.storage = storage;
 		this.publisher = publisher;
 		this.oldApiClient = oldApiClient;
 		this.newApiClient = newApiClient;
 		this.destinationJdbcClient = destinationJdbcClient;
-
+		this.podbeanClient = podbeanClient;
+		this.lookup = new SettingsLookupClient(settings);
+		this.textEncryptor = textEncryptor;
+		this.defaultPublicationService = new DefaultPublicationService(this.destinationJdbcClient, mogulService,
+				textEncryptor, this.lookup, pluginMap, objectMapper);
 		Assert.state(this.existingS3Files.exists() || this.existingS3Files.mkdirs(),
 				"the directory [" + this.existingS3Files.getAbsolutePath() + "] does not exist");
 	}
 
 	private ManagedFile writeManagedFileToS3(Long managedFileId, String originalFileName, Resource resource) {
+		var managedFile = this.managedFileService.getManagedFile(managedFileId);
+		if (managedFile.written())
+			return managedFile;
+		log.info("writing managed file #" + managedFileId + " [" + originalFileName + "]");
 		var mediaType = CommonMediaTypes.guess(resource);
 		this.managedFileService.write(managedFileId, originalFileName, mediaType, resource);
 		var updated = this.managedFileService.getManagedFile(managedFileId);
 		Assert.state(updated.written(), "the managedFile is written!");
+		log.info("wrote managed file #" + managedFileId + " [" + originalFileName + "]");
 		return updated;
 	}
 
 	@Async
 	@EventListener(ManagedFilesReadyForWriteEvent.class)
 	void afterMigration() throws Exception {
-		writePendingManagedFilesListener();
+		// writePendingManagedFilesListener();
 	}
 
 	@EventListener({ ApplicationReadyEvent.class })
 	void afterLoad() throws Exception {
-		writePendingManagedFilesListener();
+		// writePendingManagedFilesListener();
 	}
 
 	void writePendingManagedFilesListener() throws Exception {
@@ -104,7 +200,6 @@ class Migration {
 			var managedFileToConnectItTo = managedFileWrite.managedFileId();
 			arrayOfCompletableFutures[ctr] = CompletableFuture.runAsync(() -> {
 				var file = this.download(s3Source);
-				log.info("downloaded " + s3Source + " to " + file.getAbsolutePath() + '.');
 				this.writeManagedFileToS3(managedFileToConnectItTo, file.getName(), new FileSystemResource(file));
 			}, this.executor);
 			ctr += 1;
@@ -132,47 +227,34 @@ class Migration {
 		return files;
 	}
 
-	/**
-	 * this gets called from online with access to a token
-	 */
-	void migrateAllPodcasts(boolean reset, String token) {
-		try {
-			MigrationConfiguration.TOKEN.set(token);
-			var media = this.oldApiClient.media();
-			var podcasts = this.oldApiClient.podcasts(media);
-			log.info("podcasts.length = " + podcasts.size());
-			if (reset) {
-				Assert.state(!this.managedFileLog.exists() || this.managedFileLog.delete(),
-						"the managed s3 log, " + this.managedFileLog.getAbsolutePath() + ", was not reset");
-				var sql = """
-							delete from managed_file_deletion_request ;
-							delete from publication ;
-							delete from podcast_episode_segment ;
-							delete from podcast_episode ;
-							delete from managed_file ;
-							delete from event_publication ;
-						""";
-				this.destinationJdbcClient.sql(sql).update();
-				log.info("removed the tables.");
-			}
+	private void publish(String podbeanPodcastId, String podbeanEpisodeId, Long publicationKey // mogul
+																								// episode
+																								// id
+	/* com.joshlong.mogul.api.podcasts.Episode mogulEpisode */) {
 
-			var destinationPodcastId = this.newApiClient.getPodcastId();
-			log.info("destinationPodcastId " + destinationPodcastId);
+		var mogulId = 16386L;
+		var kh = new GeneratedKeyHolder();
+		var entityClass = Episode.class.getName();
 
-			for (var podcast : podcasts) {
-				this.migrate(destinationPodcastId, podcast);
-				log.info("migrated legacy podcast #" + podcast.id());
-			}
-			try (var fw = new BufferedWriter(new FileWriter(this.managedFileLog))) {
-				fw.write(JsonUtils.write(this.managedFileWrites));
-			}
-			this.publisher.publishEvent(new ManagedFilesReadyForWriteEvent());
+		var context = new ConcurrentHashMap<String, String>();
+		context.put(CONTEXT_PODBEAN_PODCAST_ID, podbeanPodcastId);
+		context.put(CONTEXT_PODBEAN_EPISODE_ID, podbeanEpisodeId);
+		context.put(CONTEXT_PODBEAN_EPISODE_PUBLISH_DATE_IN_MILLISECONDS, Long.toString(new Date().getTime()));
 
-		} //
-		catch (Throwable throwable) {
-			log.error("no idea", throwable);
-			throw new RuntimeException(throwable);
-		}
+		var contextJson = this.textEncryptor.encrypt(JsonUtils.write(context));
+		var publicationData = this.textEncryptor.encrypt(JsonUtils.write(publicationKey));
+		var configuration = this.lookup.apply(new DefaultPublicationService.SettingsLookup(mogulId, PLUGIN_NAME));
+		context.putAll(configuration);
+
+		this.destinationJdbcClient.sql(
+				"insert into publication(mogul_id, plugin, created, published, context, payload , payload_class) VALUES (?,?,?,?,?,?,?)")
+			.params(mogulId, PodbeanPodcastEpisodePublisherPlugin.PLUGIN_NAME, new Date(), null, contextJson,
+					publicationData, entityClass)
+			.update(kh);
+
+		System.out
+			.println("inserting publication for " + podbeanPodcastId + ":" + podbeanEpisodeId + ":" + publicationKey);
+		// defaultPublicationService.publish(16386, Map.of(), )
 	}
 
 	private Predicate<OldApiClient.Media> mediaTagPredicate(String tag) {
@@ -224,9 +306,7 @@ class Migration {
 			segmentFiles.add(segueAsset);
 			segmentFiles.add((interviewMedia.href()));
 			segmentFiles.add(closingAsset);
-
 			var total = segmentFiles.size();
-
 			var already = episode.segments().length;
 			while (already < total) {
 				this.newApiClient.addPodcastEpisodeSegment(episode.id());
@@ -248,7 +328,7 @@ class Migration {
 	}
 
 	// record that we need to get an s3 artifact and upload it to the new managedFile
-	// system..
+	// system
 	private void registerWrite(Long managedFileId, String s3) {
 		var mfw = new ManagedFileWrite(managedFileId, s3);
 		this.managedFileWrites.add(mfw);
@@ -285,6 +365,8 @@ class Migration {
 					FileCopyUtils.copy(in, out);
 				}
 				Assert.state(localFile.exists(), "the local s3 must exist now, but doesn't");
+				log.info("downloaded " + s3Url + " to " + localFile.getAbsolutePath() + '.');
+
 			}
 
 			var good = localFile.exists() && localFile.isFile() && cl == localFile.length();

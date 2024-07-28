@@ -1,7 +1,12 @@
 package com.joshlong.mogul.api.migration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.joshlong.mogul.api.PublisherPlugin;
+import com.joshlong.mogul.api.Settings;
 import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.managedfiles.Storage;
+import com.joshlong.mogul.api.mogul.MogulService;
+import com.joshlong.podbean.PodbeanClient;
 import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,11 +21,13 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.security.crypto.encrypt.TextEncryptor;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
 import javax.sql.DataSource;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 @EnableAsync
@@ -45,8 +52,13 @@ class MigrationConfiguration {
 
 	@Bean
 	Migration migration(Storage storage, ApplicationEventPublisher publisher, OldApiClient oldApiClient,
-			ManagedFileService mfs, NewApiClient newApiClient) {
-		return new Migration(mfs, storage, this.newDb, publisher, oldApiClient, newApiClient);
+			ManagedFileService mfs, NewApiClient newApiClient, MogulService mogulService, TextEncryptor textEncryptor,
+			Map<String, PublisherPlugin<?>> pluginMap, Settings settings, ObjectMapper objectMapper,
+			PodbeanClient podbeanClient) {
+
+		return new Migration(mfs, storage, this.newDb, publisher, oldApiClient, newApiClient, mogulService, settings,
+				textEncryptor, pluginMap, objectMapper, podbeanClient);
+
 	}
 
 	static final String MIGRATION_REST_CLIENT_QUALIFIER = "migrationRestClient";
