@@ -22,7 +22,7 @@ public interface PublisherPlugin<T> {
 		if (context == null)
 			context = new HashMap<>();
 
-		if (required == null )
+		if (required == null)
 			required = new HashSet<>();
 
 		var good = true;
