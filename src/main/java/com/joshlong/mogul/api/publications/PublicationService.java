@@ -21,10 +21,6 @@ public interface PublicationService {
 	<T extends Publishable> Publication publish(Long mogulId, T payload, Map<String, String> contextAndSettings,
 			PublisherPlugin<T> plugin);
 
-	/**
-	 * this should invoke the plugin and call its
-	 * {@link PublisherPlugin#unpublish(Map, Object) } method
-	 */
 	<T extends Publishable> Publication unpublish(Long mogulId, Publication publication, PublisherPlugin<T> plugin);
 
 }

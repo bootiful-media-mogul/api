@@ -35,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * one-off calls to the database for every, say, podcast loaded in the system.
  */
 @Service
-@Transactional
+
 class DefaultManagedFileService implements ManagedFileService {
 
 	private final ManagedFileDeletionRequestRowMapper managedFileDeletionRequestRowMapper = new ManagedFileDeletionRequestRowMapper();
@@ -58,28 +58,23 @@ class DefaultManagedFileService implements ManagedFileService {
 
 	@EventListener
 	void onManagedFileUpdatedEvent(ManagedFileUpdatedEvent managedFileUpdatedEvent) {
-		synchronized (this.cache) {
-			this.cache.remove(managedFileUpdatedEvent.managedFile().id());
-		}
+		this.cache.remove(managedFileUpdatedEvent.managedFile().id());
 	}
 
 	@EventListener
 	void onManagedFileDeletedEvent(ManagedFileDeletedEvent managedFileDeletedEvent) {
-		synchronized (this.cache) {
-			this.cache.remove(managedFileDeletedEvent.managedFile().id());
-		}
+		this.cache.remove(managedFileDeletedEvent.managedFile().id());
 	}
 
 	@EventListener(ApplicationReadyEvent.class)
 	void applicationReadyEvent() {
-		synchronized (this.cache) {
-			this.cache.clear();
-			var all = this.getAllManagedFiles();
-			for (var mf : all) {
-				this.cache.put(mf.id(), mf);
-			}
+		this.cache.clear();
+		var all = this.getAllManagedFiles();
+		for (var managedFile : all) {
+			this.cache.put(managedFile.id(), managedFile);
 		}
-		if (log.isDebugEnabled())
+
+		if ( this.log.isDebugEnabled())
 			this.log.debug("there are {} ManagedFiles in the cache", this.cache.size());
 	}
 

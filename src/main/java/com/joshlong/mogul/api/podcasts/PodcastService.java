@@ -4,6 +4,7 @@ import com.joshlong.mogul.api.managedfiles.ManagedFile;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 public interface PodcastService {
 
@@ -18,6 +19,8 @@ public interface PodcastService {
 	void deletePodcastEpisodeSegment(Long episodeSegmentId);
 
 	Segment getEpisodeSegmentById(Long episodeSegmentId);
+
+	Map<Episode , List<Segment>> getEpisodeSegmentsByEpisodes(List<Episode> episodes);
 
 	List<Segment> getEpisodeSegmentsByEpisode(Long id);
 

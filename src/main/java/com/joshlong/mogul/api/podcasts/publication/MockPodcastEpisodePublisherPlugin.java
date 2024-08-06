@@ -48,12 +48,20 @@ class MockPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlugin
 	}
 
 	@Override
-	public void publish(Map<String, String> context, Episode payload) {
-
-		context.put(PublisherPlugin.CONTEXT_URL, "https://spring.io/");
+	public void publish(Map<String, String> context, Episode payload)   {
 
 		if (log.isDebugEnabled())
-			log.debug("publishing episode {} with context {}", payload.id(), context);
+			log.debug("start: publishing episode {} with context {}", payload.id(), context);
+        try {
+            Thread.sleep(20_000);
+        }//
+		catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        context.put(PublisherPlugin.CONTEXT_URL, "https://spring.io/");
+
+		if (log.isDebugEnabled())
+			log.debug("stop: publishing episode {} with context {}", payload.id(), context);
 	}
 
 }

@@ -7,12 +7,12 @@ import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.ApplicationEventPublisherAware;
-import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.Assert;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Component
@@ -33,10 +33,11 @@ public class NotificationEvents implements BeanFactoryAware, ApplicationEventPub
 		return BEAN_FACTORY_ATOMIC_REFERENCE.get().getBean(TransactionTemplate.class);
 	}
 
-	private final static String WELL_KNOWN_EXECUTOR_NAME = "executor";
+
+	private static final Executor EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
 
 	private static Executor executor() {
-		return BEAN_FACTORY_ATOMIC_REFERENCE.get().getBean(WELL_KNOWN_EXECUTOR_NAME, Executor.class);
+		return EXECUTOR ;
 	}
 
 	private static ApplicationEventPublisher eventPublisher() {
