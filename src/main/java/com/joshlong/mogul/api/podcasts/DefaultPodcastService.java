@@ -70,7 +70,6 @@ class DefaultPodcastService implements PodcastService {
 
 	@Override
 	public Map<Episode, List<Segment>> getEpisodeSegmentsByEpisodes(List<Episode> episodeIds) {
-
 		var map = new HashMap<Episode, List<Segment>>();
 		for (var collectionOfPodcasts : this.podcasts.values()) {
 			for (var podcast : collectionOfPodcasts) {
@@ -82,39 +81,17 @@ class DefaultPodcastService implements PodcastService {
 			}
 		}
 		return map;
-
-		/*
-		 * var mapOfEpisodesToSegments = new HashMap<Episode, List<Segment>>(); var sql =
-		 * " select * from podcast_episode_segment where podcast_episode_id in ( ? ) ";
-		 * var dbSegments = this.jdbcClient .sql(sql) .params((Object)
-		 * episodeIds.stream().map(Episode::id).toArray())
-		 * .query(this.episodeSegmentRowMapper) .list(); var mapOfEpisodeIdToEpisode = new
-		 * HashMap<Long, Episode>(); for (var e : episodeIds) {
-		 * mapOfEpisodeIdToEpisode.put(e.id(), e); } for (var segment : dbSegments) { var
-		 * episode = mapOfEpisodeIdToEpisode.get(segment.episodeId());
-		 * mapOfEpisodesToSegments.computeIfAbsent(episode, e -> new
-		 * ArrayList<>()).add(segment); } for (var segments :
-		 * mapOfEpisodesToSegments.values()) {
-		 * segments.sort(Comparator.comparingInt(Segment::order)); } return
-		 * mapOfEpisodesToSegments;
-		 */
 	}
 
 	@Override
 	public List<Segment> getEpisodeSegmentsByEpisode(Long episodeId) {
 		var sql = " select * from podcast_episode_segment where podcast_episode_id = ? order by sequence_number asc  ";
-
 		return this.jdbcClient.sql(sql).params(episodeId).query(episodeSegmentRowMapper).list();
 	}
-	// todo we need something that, whenever a managedfile has been updated, allows us to
-	// mark an episode as being completed
 
 	@ApplicationModuleListener
 	void podcastManagedFileUpdated(ManagedFileUpdatedEvent managedFileUpdatedEvent) {
 		var mf = managedFileUpdatedEvent.managedFile();
-		// now find the episode to which this managedFile belongs by looking at the
-		// graphic or segments and working backwards
-
 		var sql = """
 				select pes.podcast_episode_id as id
 				from podcast_episode_segment pes
