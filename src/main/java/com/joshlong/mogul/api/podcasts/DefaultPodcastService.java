@@ -247,7 +247,7 @@ class DefaultPodcastService implements PodcastService {
 			.sql("update podcast_episode_segment set sequence_number = ? where id = ?")
 			.params(order, episodeSegmentId)
 			.update();
-
+		// do not publish an event
 	}
 
 	/**

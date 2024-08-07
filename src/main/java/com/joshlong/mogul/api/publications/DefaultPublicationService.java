@@ -11,6 +11,9 @@ import com.joshlong.mogul.api.utils.JsonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -21,18 +24,13 @@ import org.springframework.util.Assert;
 import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.function.Function;
 
 import static com.joshlong.mogul.api.PublisherPlugin.CONTEXT_URL;
 
 @RegisterReflectionForBinding({ Publishable.class, PublisherPlugin.class })
 class DefaultPublicationService implements PublicationService {
-
-	public record PublicationStartedEvent(long publicationId) {
-	}
-
-	public record PublicationCompletedEvent(long publicationId) {
-	}
 
 	public record SettingsLookup(Long mogulId, String category) {
 	}
@@ -51,14 +49,18 @@ class DefaultPublicationService implements PublicationService {
 
 	private final TransactionTemplate transactionTemplate;
 
+	private final ApplicationEventPublisher publisher;
+
 	DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
-			TransactionTemplate tt, Function<SettingsLookup, Map<String, String>> settingsLookup) {
+			TransactionTemplate tt, Function<SettingsLookup, Map<String, String>> settingsLookup,
+			ApplicationEventPublisher publisher) {
 		this.db = db;
 		this.transactionTemplate = tt;
 		this.settingsLookup = settingsLookup;
 		this.mogulService = mogulService;
 		this.textEncryptor = textEncryptor;
 		this.publicationRowMapper = new PublicationRowMapper(textEncryptor);
+		this.publisher = publisher;
 	}
 
 	@Override
@@ -78,6 +80,9 @@ class DefaultPublicationService implements PublicationService {
 				this.db.sql("update publication set state = ?, context = ? where id =? ")
 					.params(Publication.State.UNPUBLISHED.name(), contextJson, publication.id())
 					.update();
+
+				this.publisher.publishEvent(new PublicationUpdatedEvent(publication.id()));
+
 			}
 
 		}
@@ -116,6 +121,7 @@ class DefaultPublicationService implements PublicationService {
 						publicationData, entityClazz)
 				.update(kh);
 			return JdbcUtils.getIdFromKeyHolder(kh).longValue();
+
 		});
 
 		NotificationEvents.notifyAsync(NotificationEvent.notificationEventFor(mogulId,
@@ -137,6 +143,9 @@ class DefaultPublicationService implements PublicationService {
 		if (null != url) {
 			this.db.sql(" update publication set url = ? where id = ?").params(url, publicationId).update();
 		}
+
+		this.publisher.publishEvent(new PublicationUpdatedEvent(publicationId));
+
 		var publication = this.getPublicationById(publicationId);
 		this.log.debug("writing publication out: {}", publication);
 		return publication;
@@ -144,27 +153,64 @@ class DefaultPublicationService implements PublicationService {
 
 	@Override
 	public Publication getPublicationById(Long publicationId) {
-		return this.db //
-			.sql("select * from publication where id = ? ") //
-			.params(publicationId)//
-			.query(this.publicationRowMapper)//
-			.single();
+
+		for (var pc : this.publicationsCache.values())
+			for (var p : pc)
+				if (p.id().equals(publicationId))
+					return p;
+
+		throw new IllegalStateException(
+				"we shouldn't get to this point. what are you doing looking up a publication whose ID (" + publicationId
+						+ ") doesn't match? ");
+
+		/*
+		 * this.db // .sql("select * from publication where id = ? ") //
+		 * .params(publicationId)// .query(this.publicationRowMapper)// .single();
+		 */
 	}
 
+	private final Map<CacheKey, Collection<Publication>> publicationsCache = new ConcurrentHashMap<>();
+
+	private record CacheKey(Class<?> clazz, Serializable publicationKey) {
+	}
+
+	private void refreshCache() {
+
+		if (this.log.isDebugEnabled())
+			this.log.debug("refreshing the publication cache");
+
+		var publicationComparator = Comparator.comparing((Publication p) -> p.payloadClass() + ":" + p.payload());
+		this.db.sql("select * from publication").query(this.publicationRowMapper).stream().forEach(publication -> {
+			var key = new CacheKey(publication.payloadClass(), publication.payload());
+			this.publicationsCache.computeIfAbsent(key, cacheKey -> new ConcurrentSkipListSet<>(publicationComparator))
+				.add(publication);
+		});
+	}
+
+	// todo cache the publications
 	@Override
 	public Collection<Publication> getPublicationsByPublicationKeyAndClass(Serializable publicationKey,
 			Class<?> clazz) {
-		if (true)
-			return new ArrayList<>(); // todo fix this
-		var sql = " select * from publication where payload = ? and payload_class = ? ";
-		var jsonPublicationKey = JsonUtils.write(publicationKey);
-		return this.db//
-			.sql(sql)//
-			.params(jsonPublicationKey, clazz.getName())//
-			.query(this.publicationRowMapper)//
-			.stream() //
-			.sorted(Comparator.comparing(Publication::created).reversed()) //
+		var key = new CacheKey(clazz, publicationKey);
+		return this.publicationsCache.get(key)
+			.stream()
+			.sorted(Comparator.comparing(Publication::created).reversed())
 			.toList();
+	}
+
+	@EventListener(ApplicationReadyEvent.class)
+	void ready() {
+		this.refreshCache();
+	}
+
+	@EventListener(PublicationStartedEvent.class)
+	void started() {
+		this.refreshCache();
+	}
+
+	@EventListener(PublicationCompletedEvent.class)
+	void completed() {
+		this.refreshCache();
 	}
 
 }
