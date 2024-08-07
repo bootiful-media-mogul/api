@@ -124,17 +124,7 @@ class PodcastController {
 
 	@BatchMapping
 	Map<Episode, List<Segment>> segments(List<Episode> episodes) {
-		var mapOfEpisodeIdsToEpisodes = new HashMap<Long, Episode>();
-		for (var episode : episodes)
-			mapOfEpisodeIdsToEpisodes.put(episode.id(), episode);
-		var result = new HashMap<Episode, List<Segment>>();
-
-		for (var segment : this.podcastService.getEpisodeSegmentsByEpisodes(episodes).entrySet()) {
-			var episodeId = segment.getKey();
-			var segments = segment.getValue();
-			result.put(mapOfEpisodeIdsToEpisodes.get(episodeId), segments);
-		}
-		return result;
+		return this.podcastService.getEpisodeSegmentsByEpisodes(episodes);
 	}
 
 	@SchemaMapping
@@ -161,7 +151,6 @@ class PodcastController {
 		this.mogulService.assertAuthorizedMogul(podcast.mogulId());
 		var episodesByPodcast = this.podcastService.getEpisodesByPodcast(podcast.id());
 		log.debug("episodes by podcast #{} {}", podcast.id(), podcast.title());
-
 		return episodesByPodcast;
 	}
 

@@ -1,6 +1,6 @@
 package com.joshlong.mogul.api.mogul;
 
-import org.springframework.context.ApplicationListener;
+import org.springframework.context.event.EventListener;
 import org.springframework.security.authentication.event.AuthenticationSuccessEvent;
 import org.springframework.stereotype.Component;
 
@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  * proxies to this resource server
  */
 @Component
-class MogulAuthenticationSuccessEventListener implements ApplicationListener<AuthenticationSuccessEvent> {
+class MogulAuthenticationSuccessEventListener {
 
 	private final MogulService ms;
 
@@ -17,8 +17,8 @@ class MogulAuthenticationSuccessEventListener implements ApplicationListener<Aut
 		this.ms = ms;
 	}
 
-	@Override
-	public void onApplicationEvent(AuthenticationSuccessEvent ase) {
+	@EventListener
+	void authenticationSuccessEvent(AuthenticationSuccessEvent ase) {
 		this.ms.login(ase.getAuthentication());
 	}
 

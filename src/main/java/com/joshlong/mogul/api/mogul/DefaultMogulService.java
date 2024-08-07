@@ -71,8 +71,13 @@ class DefaultMogulService implements MogulService {
 				this.db.sql(sql).params(principalName, aud).update();
 			}
 			mogulByName = this.getMogulByName(principalName);
-			publisher.publishEvent(new MogulCreatedEvent(mogulByName));
+			this.publisher.publishEvent(new MogulCreatedEvent(mogulByName));
 		}
+
+		this.publisher.publishEvent(new MogulAuthenticatedEvent(mogulByName));
+		// todo publish some sort of MogulAuthenticatedEvent so that we can use that as a
+		// cue in the PodcastService to load the
+		// particular mogul's data into memory.
 		return mogulByName;
 	}
 

@@ -24,6 +24,7 @@ class EpisodeRowMapper implements RowMapper<Episode> {
 	@Override
 	public Episode mapRow(ResultSet resultSet, int rowNum) throws SQLException {
 		var episodeId = resultSet.getLong("id");
+		var segments = this.segmentFunction.apply(episodeId);
 		return new Episode(//
 				episodeId, //
 				resultSet.getLong("podcast_id"), //
@@ -36,7 +37,7 @@ class EpisodeRowMapper implements RowMapper<Episode> {
 				resultSet.getBoolean("complete"), //
 				resultSet.getDate("produced_audio_updated"), //
 				resultSet.getDate("produced_audio_assets_updated"), //
-				this.segmentFunction.apply(episodeId));
+				segments);
 	}
 
 }
