@@ -25,9 +25,12 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
- * todo cache the podcasts and be sure to reap them every now and then
+ * i think the issue isnt' so much the size of the data so much as the number of requests.
+ * so what if i just loaded everything to do with a podcast when it's asked for? all of
+ * its episodes, all their segments, all their managed files. in as few tx's as possible.
  */
 @Service
 @Transactional
@@ -37,63 +40,71 @@ class DefaultPodcastService implements PodcastService {
 
 	private final PodcastRowMapper podcastRowMapper = new PodcastRowMapper();
 
-	private final Map<Long, Podcast> podcastCacheById = new ConcurrentHashMap<>();
-	private final Map<Long, List<Podcast>> podcastCacheByMogulId = new ConcurrentHashMap<>();
-
 	private final JdbcClient jdbcClient;
 
 	private final EpisodeRowMapper episodeRowMapper;
+
 	private final ManagedFileService managedFileService;
+
 	private final MogulService mogulService;
+
 	private final EpisodeSegmentRowMapper episodeSegmentRowMapper;
+
 	private final MediaNormalizer mediaNormalizer;
+
 	private final ApplicationEventPublisher publisher;
 
-	DefaultPodcastService(MediaNormalizer mediaNormalizer, MogulService mogulService, JdbcClient jdbcClient, ManagedFileService managedFileService,
-			ApplicationEventPublisher publisher) {
+	DefaultPodcastService(MediaNormalizer mediaNormalizer, MogulService mogulService, JdbcClient jdbcClient,
+			ManagedFileService managedFileService, ApplicationEventPublisher publisher) {
 		this.jdbcClient = jdbcClient;
 		this.mediaNormalizer = mediaNormalizer;
 		this.mogulService = mogulService;
 		this.managedFileService = managedFileService;
 		this.publisher = publisher;
 		var managedFileResolverFunction = (Function<Long, ManagedFile>) this.managedFileService::getManagedFile;
-		this.episodeRowMapper = new EpisodeRowMapper(this::getPodcastById, managedFileResolverFunction);
-		this.episodeSegmentRowMapper = new EpisodeSegmentRowMapper(managedFileResolverFunction);
-		this.refreshPodcastCache();
-	}
+		this.episodeRowMapper = new EpisodeRowMapper(managedFileResolverFunction,
+				episodeId -> this.getEpisodeById(episodeId).segments());
 
+		this.episodeSegmentRowMapper = new EpisodeSegmentRowMapper(managedFileResolverFunction);
+	}
 
 	@Override
 	public Map<Episode, List<Segment>> getEpisodeSegmentsByEpisodes(List<Episode> episodeIds) {
-		var mapOfEpisodesToSegments = new HashMap<Episode, List<Segment>>();
-		var sql = " select * from podcast_episode_segment where podcast_episode_id in ( ? ) ";
-		var dbSegments = this.jdbcClient
-				.sql(sql)
-				.params((Object) episodeIds.stream().map(Episode::id).toArray())
-				.query(this.episodeSegmentRowMapper)
-				.list();
-		var mapOfEpisodeIdToEpisode = new HashMap<Long, Episode>();
-		for (var e : episodeIds) {
-			mapOfEpisodeIdToEpisode.put(e.id(), e);
+
+		var map = new HashMap<Episode, List<Segment>>();
+		for (var collectionOfPodcasts : this.podcasts.values()) {
+			for (var podcast : collectionOfPodcasts) {
+				for (var episode : podcast.episodes()) {
+					for (var e : episodeIds)
+						if (episode.id().equals(e.id()))
+							map.put(episode, episode.segments());
+				}
+			}
 		}
-		for (var segment : dbSegments) {
-			var episode = mapOfEpisodeIdToEpisode.get(segment.episodeId());
-			mapOfEpisodesToSegments.computeIfAbsent(episode, e -> new ArrayList<>()).add(segment);
-		}
-		for (var segments : mapOfEpisodesToSegments.values()) {
-			segments.sort(Comparator.comparingInt(Segment::order));
-		}
-		return mapOfEpisodesToSegments;
+		return map;
+
+		/*
+		 * var mapOfEpisodesToSegments = new HashMap<Episode, List<Segment>>(); var sql =
+		 * " select * from podcast_episode_segment where podcast_episode_id in ( ? ) ";
+		 * var dbSegments = this.jdbcClient .sql(sql) .params((Object)
+		 * episodeIds.stream().map(Episode::id).toArray())
+		 * .query(this.episodeSegmentRowMapper) .list(); var mapOfEpisodeIdToEpisode = new
+		 * HashMap<Long, Episode>(); for (var e : episodeIds) {
+		 * mapOfEpisodeIdToEpisode.put(e.id(), e); } for (var segment : dbSegments) { var
+		 * episode = mapOfEpisodeIdToEpisode.get(segment.episodeId());
+		 * mapOfEpisodesToSegments.computeIfAbsent(episode, e -> new
+		 * ArrayList<>()).add(segment); } for (var segments :
+		 * mapOfEpisodesToSegments.values()) {
+		 * segments.sort(Comparator.comparingInt(Segment::order)); } return
+		 * mapOfEpisodesToSegments;
+		 */
 	}
 
 	@Override
 	public List<Segment> getEpisodeSegmentsByEpisode(Long episodeId) {
 		var sql = " select * from podcast_episode_segment where podcast_episode_id = ? order by sequence_number asc  ";
 
-		return this.jdbcClient.sql(sql)
-			.params(episodeId)
-				.query(episodeSegmentRowMapper)
-			.list();
+		return this.jdbcClient.sql(sql).params(episodeId).query(episodeSegmentRowMapper).list();
 	}
 	// todo we need something that, whenever a managedfile has been updated, allows us to
 	// mark an episode as being completed
@@ -139,7 +150,8 @@ class DefaultPodcastService implements PodcastService {
 					var updated = new Date();
 					// if this is older than the last time we have produced any audio,
 					// then we won't reproduce the audio
-					this.jdbcClient.sql("update podcast_episode  set produced_audio_assets_updated = ? where    id = ? ")
+					this.jdbcClient
+						.sql("update podcast_episode  set produced_audio_assets_updated = ? where    id = ? ")
 						.params(updated, episodeId)
 						.update();
 				});
@@ -152,13 +164,11 @@ class DefaultPodcastService implements PodcastService {
 	private void refreshPodcastEpisodeCompleteness(Long episodeId) {
 		var episode = this.getEpisodeById(episodeId);
 		var segments = this.getEpisodeSegmentsByEpisode(episodeId);
-		// there must be a graphic managed file, at least one segment, and all segments
-		// must have been written
 		var written = (episode.graphic().written() && episode.producedGraphic().written()) && !segments.isEmpty()
 				&& (segments.stream().allMatch(se -> se.audio().written() && se.producedAudio().written()));
-
-		// log.debug("written? {}", written);
-		this.jdbcClient.sql("update podcast_episode set complete = ? where id = ? ").params(written, episode.id()).update();
+		this.jdbcClient.sql("update podcast_episode set complete = ? where id = ? ")
+			.params(written, episode.id())
+			.update();
 		var episodeById = this.getEpisodeById(episode.id());
 		for (var e : Set.of(new PodcastEpisodeUpdatedEvent(episodeById),
 				new PodcastEpisodeCompletionEvent(episodeById)))
@@ -169,20 +179,15 @@ class DefaultPodcastService implements PodcastService {
 	@ApplicationModuleListener
 	void mogulCreated(MogulCreatedEvent createdEvent) {
 		var podcast = this.createPodcast(createdEvent.mogul().id(), createdEvent.mogul().username() + "'s Podcast");
-		Assert.notNull(podcast,
-				"there should be a newly created podcast associated with the mogul [" + createdEvent.mogul() + "]");
+		Assert.notNull(podcast, "there should be a newly created podcast" + " associated with the mogul ["
+				+ createdEvent.mogul() + "]");
 	}
-
 
 	@Override
 	public Collection<Episode> getEpisodesByPodcast(Long podcastId) {
 		var podcast = this.getPodcastById(podcastId);
 		Assert.notNull(podcast, "the podcast with id [" + podcastId + "] is null");
-		return this.jdbcClient
-			.sql("select * from podcast_episode where podcast_id =? order by created ")
-			.param(podcastId)
-			.query(this.episodeRowMapper)
-			.list();
+		return podcast.episodes();
 	}
 
 	@Override
@@ -251,11 +256,10 @@ class DefaultPodcastService implements PodcastService {
 
 	@Override
 	public Episode getEpisodeById(Long episodeId) {
-		var res = this.jdbcClient
-				.sql("select * from podcast_episode where id =?")
-				.param(episodeId)
-				.query(this.episodeRowMapper)
-				.list();
+		var res = this.jdbcClient.sql("select * from podcast_episode where id =?")
+			.param(episodeId)
+			.query(this.episodeRowMapper)
+			.list();
 		return res.isEmpty() ? null : res.getFirst();
 	}
 
@@ -271,8 +275,8 @@ class DefaultPodcastService implements PodcastService {
 	 * collection, +1 if it's to be moved later.
 	 */
 	private void moveEpisodeSegment(Long episodeId, Long segmentId, int position) {
-		var segments = getEpisodeSegmentsByEpisode(episodeId);
-		var segment = getEpisodeSegmentById(segmentId);
+		var segments = this.getEpisodeSegmentsByEpisode(episodeId);
+		var segment = this.getEpisodeSegmentById(segmentId);
 		var positionOfSegment = segments.indexOf(segment);
 		var newPositionOfSegment = positionOfSegment + position;
 		if (newPositionOfSegment < 0 || newPositionOfSegment > (segments.size() - 1)) {
@@ -349,7 +353,9 @@ class DefaultPodcastService implements PodcastService {
 			func.accept(segment.producedAudio(), ids);
 		}
 
-		this.jdbcClient.sql("delete from podcast_episode_segment where podcast_episode_id= ?").param(episode.id()).update();
+		this.jdbcClient.sql("delete from podcast_episode_segment where podcast_episode_id= ?")
+			.param(episode.id())
+			.update();
 		this.jdbcClient.sql("delete from podcast_episode where id= ?").param(episode.id()).update();
 
 		for (var managedFileId : ids)
@@ -360,17 +366,26 @@ class DefaultPodcastService implements PodcastService {
 
 	@Override
 	public Podcast getPodcastById(Long podcastId) {
-		return this. podcastCacheById
-				.computeIfAbsent(podcastId, pid -> {
-			var podcast = this.jdbcClient
-					.sql("select * from podcast where id = ?")
-					.param(podcastId)
-					.query(this.podcastRowMapper)
-					.single();
-			if (this.log.isDebugEnabled())
-				this.log.debug("could not find podcast #{} in cache, so went to DB.", podcastId);
-			return podcast;
-		});
+
+		for (var allPodcasts : this.podcasts.values()) {
+			for (var podcast : allPodcasts) {
+				if (podcast.id().equals(podcastId))
+					return podcast;
+			}
+		}
+		return null;
+
+		/*
+		 * this.podcasts.values(). stream ().flatMap ( podcasts ->
+		 * podcasts.stream().filter(podcast -> { return podcast .id() .equals( podcastId);
+		 * }).findAny() .orElse(null));
+		 *
+		 * return this. podcasts .computeIfAbsent(podcastId, pid -> { var podcast =
+		 * this.jdbcClient .sql("select * from podcast where id = ?") .param(podcastId)
+		 * .query(this.podcastRowMapper) .single(); if (this.log.isDebugEnabled())
+		 * this.log.debug("could not find podcast #{} in cache, so went to DB.",
+		 * podcastId); return podcast; });
+		 */
 
 	}
 
@@ -424,7 +439,7 @@ class DefaultPodcastService implements PodcastService {
 		return this.jdbcClient//
 			.sql("select * from podcast_episode_segment where id =?")//
 			.params(episodeSegmentId)
-				.query(this.episodeSegmentRowMapper)//
+			.query(this.episodeSegmentRowMapper)//
 			.optional()//
 			.orElse(null);
 	}
@@ -451,8 +466,8 @@ class DefaultPodcastService implements PodcastService {
 		Assert.notNull(episodeId, "the episode is null");
 		Assert.hasText(title, "the title is null");
 		Assert.hasText(description, "the description is null");
-		var episode = getEpisodeById(episodeId);
-		mogulService.assertAuthorizedMogul(episode.podcast().mogulId());
+		// var episode = getEpisodeById(episodeId);
+		// mogulService.assertAuthorizedMogul(episode.podcast().mogulId());
 		jdbcClient.sql("update podcast_episode set title =? , description =? where  id = ?")
 			.params(title, description, episodeId)
 			.update();
@@ -477,36 +492,75 @@ class DefaultPodcastService implements PodcastService {
 		}
 	}
 
-	@EventListener({PodcastDeletedEvent.class, PodcastCreatedEvent.class})
+	@EventListener({ PodcastDeletedEvent.class, PodcastCreatedEvent.class })
 	void refreshPodcastCacheOnInvalidation() {
-		this.refreshPodcastCache();
+		this.jdbcClient.sql("select id from mogul").query((rs, rowNum) -> {
+			var mogulId = rs.getLong("id");
+			this.refreshMogulPodcasts(mogulId);
+			return mogulId;
+		});
 	}
 
-	// todo work on the caching of podcasts so we don't need to resolve them every darned time
-	private void refreshPodcastCache() {
-		var podcasts = this.jdbcClient.sql("select   * from podcast ").query(this.podcastRowMapper).list();
-		this. podcastCacheById.clear();
-		for (var p : podcasts)
-		{
-			this.podcastCacheById.put(p.id(), p);
-			this.podcastCacheByMogulId .computeIfAbsent( p.mogulId() , mid->new ArrayList<>())
-					.add( p );
+	// this will be our main cache mogul(0,1) => podcasts(*)
+	private final Map<Long, Collection<Podcast>> podcasts = new ConcurrentHashMap<>();
 
-		}
+	private Collection<Podcast> refreshMogulPodcasts(Long mogulId) {
+
+		var podcasts = this.jdbcClient//
+			.sql("select * from podcast where mogul_id = ? order by created")
+			.param(mogulId)
+			.query(this.podcastRowMapper)
+			.stream()
+			.collect(Collectors.toMap(Podcast::id, p -> p));
+
+		var managedFiles = this.managedFileService.getAllManagedFilesForMogul(mogulId)
+			.stream()
+			.collect(Collectors.toMap(ManagedFile::id, mf -> mf));
+
+		// p.id as podcast_id, pe.id as podcast_episode_id,
+		var segments = new HashMap<Long, List<Segment>>();
+		this.jdbcClient.sql("""
+							select   pes.*
+							from
+				   					podcast p,
+				     					podcast_episode pe ,
+				 								podcast_episode_segment pes
+							where
+									p.mogul_id = ?
+				 						and
+				   					p.id=pe.podcast_id
+				 						and
+				   					pe.id = pes.podcast_episode_id
+				""")
+			.param(mogulId)
+			.query(new EpisodeSegmentRowMapper(managedFiles::get))
+			.stream()
+			.forEach(seg -> segments.computeIfAbsent(seg.episodeId(), s -> new ArrayList<>()).add(seg));
+
+		segments.values().forEach(list -> list.sort(Comparator.comparing(Segment::order)));
+		var ids = this.jdbcClient.sql("select id from  podcast where mogul_id = ? ")
+			.param(mogulId)
+			.query((rs, rowNum) -> rs.getLong("id"))
+			.stream()
+			.map(i -> Long.toString(i))
+			.collect(Collectors.joining(","));
+		this.jdbcClient.sql("select * from podcast_episode where podcast_id in (" + ids + ")")
+			.query(new EpisodeRowMapper(managedFiles::get, segments::get))
+			.stream()
+			.forEach(episode -> {
+				var podcastId = episode.podcastId();
+				podcasts.get(podcastId).episodes().add(episode);
+			});
+
+		podcasts.values().forEach(p -> p.episodes().sort(Comparator.comparing(Episode::created).reversed()));
+		this.podcasts.put(mogulId, podcasts.values());
+		return this.podcasts.get(mogulId);
 	}
 
 	@Override
 	public Collection<Podcast> getAllPodcastsByMogul(Long mogulId) {
-
-		return this.podcastCacheByMogulId.get( mogulId) ;
-/*
-		var podcasts = this.jdbcClient//
-				.sql("select * from podcast where mogul_id = ? order by created")
-				.param(mogulId)
-				.query(podcastRowMapper)
-				.list();
-
-		return podcasts;*/
+		this.refreshMogulPodcasts(mogulId);
+		return this.podcasts.get(mogulId);
 	}
 
 }

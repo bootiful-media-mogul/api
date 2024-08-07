@@ -40,4 +40,6 @@ public interface ManagedFileService {
 	ManagedFile createManagedFile(Long mogulId, String bucket, String folder, String fileName, long size,
 			MediaType mediaType);
 
+	Collection<ManagedFile> getAllManagedFilesForMogul(Long mogulId);
+
 }

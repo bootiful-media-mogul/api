@@ -5,17 +5,20 @@ import org.springframework.jdbc.core.RowMapper;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.function.Function;
 
 class EpisodeRowMapper implements RowMapper<Episode> {
 
-	private final Function<Long, Podcast> podcastFunction;
-
 	private final Function<Long, ManagedFile> managedFileFunction;
 
-	EpisodeRowMapper(Function<Long, Podcast> podcastFunction, Function<Long, ManagedFile> managedFileFunction) {
-		this.podcastFunction = podcastFunction;
+	private final Function<Long, List<Segment>> segmentFunction;
+
+	EpisodeRowMapper(Function<Long, ManagedFile> managedFileFunction, Function<Long, List<Segment>> segmentFunction) {
 		this.managedFileFunction = managedFileFunction;
+		this.segmentFunction = segmentFunction;
 	}
 
 	@Override
@@ -23,7 +26,7 @@ class EpisodeRowMapper implements RowMapper<Episode> {
 		var episodeId = resultSet.getLong("id");
 		return new Episode(//
 				episodeId, //
-				this.podcastFunction.apply(resultSet.getLong("podcast_id")), //
+				resultSet.getLong("podcast_id"), //
 				resultSet.getString("title"), //
 				resultSet.getString("description"), //
 				resultSet.getDate("created"), //
@@ -32,8 +35,8 @@ class EpisodeRowMapper implements RowMapper<Episode> {
 				this.managedFileFunction.apply(resultSet.getLong("produced_audio")), //
 				resultSet.getBoolean("complete"), //
 				resultSet.getDate("produced_audio_updated"), //
-				resultSet.getDate("produced_audio_assets_updated") //
-		);
+				resultSet.getDate("produced_audio_assets_updated"), //
+				this.segmentFunction.apply(episodeId));
 	}
 
 }

@@ -13,7 +13,6 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
 
@@ -35,7 +34,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * one-off calls to the database for every, say, podcast loaded in the system.
  */
 @Service
-
 class DefaultManagedFileService implements ManagedFileService {
 
 	private final ManagedFileDeletionRequestRowMapper managedFileDeletionRequestRowMapper = new ManagedFileDeletionRequestRowMapper();
@@ -74,7 +72,7 @@ class DefaultManagedFileService implements ManagedFileService {
 			this.cache.put(managedFile.id(), managedFile);
 		}
 
-		if ( this.log.isDebugEnabled())
+		if (this.log.isDebugEnabled())
 			this.log.debug("there are {} ManagedFiles in the cache", this.cache.size());
 	}
 
@@ -220,6 +218,15 @@ class DefaultManagedFileService implements ManagedFileService {
 			.update(kh);
 		log.info("the bucket is [{}]", bucket);
 		return this.getManagedFile(((Number) Objects.requireNonNull(kh.getKeys()).get("id")).longValue());
+	}
+
+	@Override
+	public Collection<ManagedFile> getAllManagedFilesForMogul(Long mogulId) {
+		Assert.notNull(mogulId, "the mogulId should not be null");
+		return this.db.sql("select * from managed_file where mogul_id = ?")
+			.param(mogulId)
+			.query(new ManagedFileRowMapper())
+			.list();
 	}
 
 }

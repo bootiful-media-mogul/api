@@ -68,7 +68,7 @@ class ProducingPodcastPublisherPluginBeanPostProcessor implements BeanFactoryAwa
 							|| episode.producedAudioUpdated().before(episode.producedAudioAssetsUpdated());
 					log.debug("should produce the audio for episode [{}] from scratch? [{}]",
 							"#" + episode.id() + " / " + episode.title(), shouldProduceAudio);
-					var mogulId = episode.podcast().mogulId();
+					var mogulId = podcastService.getPodcastById(episode.podcastId()).mogulId();
 					return transactionTemplate.execute(status -> {
 
 						if (shouldProduceAudio) {

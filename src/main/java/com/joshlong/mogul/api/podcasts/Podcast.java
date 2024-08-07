@@ -1,6 +1,8 @@
 package com.joshlong.mogul.api.podcasts;
 
+import java.util.Collection;
 import java.util.Date;
+import java.util.List;
 
 /**
  *
@@ -11,5 +13,5 @@ import java.util.Date;
  * @param mogulId
  * @param title
  */
-public record Podcast(Long mogulId, Long id, String title, Date created) {
+public record Podcast(Long mogulId, Long id, String title, Date created, List<Episode> episodes) {
 }

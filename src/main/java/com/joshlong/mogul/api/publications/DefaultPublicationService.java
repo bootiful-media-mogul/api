@@ -15,7 +15,6 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.Assert;
 
@@ -25,7 +24,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 import static com.joshlong.mogul.api.PublisherPlugin.CONTEXT_URL;
-
 
 @RegisterReflectionForBinding({ Publishable.class, PublisherPlugin.class })
 class DefaultPublicationService implements PublicationService {
@@ -38,7 +36,6 @@ class DefaultPublicationService implements PublicationService {
 
 	public record SettingsLookup(Long mogulId, String category) {
 	}
-
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -54,9 +51,8 @@ class DefaultPublicationService implements PublicationService {
 
 	private final TransactionTemplate transactionTemplate;
 
-	DefaultPublicationService(JdbcClient db,
-							  MogulService mogulService, TextEncryptor textEncryptor, TransactionTemplate tt,
-							  Function<SettingsLookup, Map<String, String>> settingsLookup) {
+	DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
+			TransactionTemplate tt, Function<SettingsLookup, Map<String, String>> settingsLookup) {
 		this.db = db;
 		this.transactionTemplate = tt;
 		this.settingsLookup = settingsLookup;
@@ -67,7 +63,7 @@ class DefaultPublicationService implements PublicationService {
 
 	@Override
 	public <T extends Publishable> Publication unpublish(Long mogulId, Publication publication,
-														 PublisherPlugin<T> plugin) {
+			PublisherPlugin<T> plugin) {
 		var mogul = this.mogulService.getMogulById(mogulId);
 		Assert.notNull(plugin, "the plugin must not be null");
 		Assert.notNull(publication, "the publication must not be null");
@@ -80,13 +76,14 @@ class DefaultPublicationService implements PublicationService {
 			if (plugin.unpublish(newContext, publication)) {
 				var contextJson = this.textEncryptor.encrypt(JsonUtils.write(context));
 				this.db.sql("update publication set state = ?, context = ? where id =? ")
-						.params(Publication.State.UNPUBLISHED.name(), contextJson, publication.id())
-						.update();
+					.params(Publication.State.UNPUBLISHED.name(), contextJson, publication.id())
+					.update();
 			}
 
-		} catch (Exception throwable) {
+		}
+		catch (Exception throwable) {
 			log.warn("couldn't unpublish {} with url {}", publication.id(), publication.url());
-//
+			//
 		}
 
 		return this.getPublicationById(publication.id());
@@ -96,12 +93,12 @@ class DefaultPublicationService implements PublicationService {
 	// not included in the longer running parent transaction
 	@Override
 	public <T extends Publishable> Publication publish(Long mogulId, T payload, Map<String, String> contextAndSettings,
-													   PublisherPlugin<T> plugin) {
+			PublisherPlugin<T> plugin) {
 		Assert.notNull(plugin, "the plugin must not be null");
 		Assert.notNull(payload, "the payload must not be null");
 
 		var configuration = this.settingsLookup
-				.apply(new SettingsLookup(this.mogulService.getCurrentMogul().id(), plugin.name()));
+			.apply(new SettingsLookup(this.mogulService.getCurrentMogul().id(), plugin.name()));
 		var context = new ConcurrentHashMap<String, String>();
 		context.putAll(configuration);
 		context.putAll(contextAndSettings);
@@ -114,13 +111,12 @@ class DefaultPublicationService implements PublicationService {
 			var entityClazz = payload.getClass().getName();
 			var kh = new GeneratedKeyHolder();
 			this.db.sql(
-							"insert into publication( state,mogul_id, plugin, created, published, context, payload , payload_class) VALUES (?,?,?,?,?,?,?,?)")
-					.params(Publication.State.DRAFT.name(), mogulId, plugin.name(), new Date(), null, contextJson,
-							publicationData, entityClazz)
-					.update(kh);
+					"insert into publication( state,mogul_id, plugin, created, published, context, payload , payload_class) VALUES (?,?,?,?,?,?,?,?)")
+				.params(Publication.State.DRAFT.name(), mogulId, plugin.name(), new Date(), null, contextJson,
+						publicationData, entityClazz)
+				.update(kh);
 			return JdbcUtils.getIdFromKeyHolder(kh).longValue();
 		});
-
 
 		NotificationEvents.notifyAsync(NotificationEvent.notificationEventFor(mogulId,
 				new PublicationStartedEvent(publicationId), Long.toString(publicationId), null, true, true));
@@ -134,8 +130,8 @@ class DefaultPublicationService implements PublicationService {
 
 		var contextJsonAfterPublish = this.textEncryptor.encrypt(JsonUtils.write(context));
 		this.db.sql(" update publication set state =? ,context = ?, published = ?  where id = ?")
-				.params(Publication.State.PUBLISHED.name(), contextJsonAfterPublish, new Date(), publicationId)
-				.update();
+			.params(Publication.State.PUBLISHED.name(), contextJsonAfterPublish, new Date(), publicationId)
+			.update();
 
 		var url = context.getOrDefault(CONTEXT_URL, null);
 		if (null != url) {
@@ -149,24 +145,26 @@ class DefaultPublicationService implements PublicationService {
 	@Override
 	public Publication getPublicationById(Long publicationId) {
 		return this.db //
-				.sql("select * from publication where id = ? ") //
-				.params(publicationId)//
-				.query(this.publicationRowMapper)//
-				.single();
+			.sql("select * from publication where id = ? ") //
+			.params(publicationId)//
+			.query(this.publicationRowMapper)//
+			.single();
 	}
 
 	@Override
 	public Collection<Publication> getPublicationsByPublicationKeyAndClass(Serializable publicationKey,
-																		   Class<?> clazz) {
+			Class<?> clazz) {
+		if (true)
+			return new ArrayList<>(); // todo fix this
 		var sql = " select * from publication where payload = ? and payload_class = ? ";
 		var jsonPublicationKey = JsonUtils.write(publicationKey);
 		return this.db//
-				.sql(sql)//
-				.params(jsonPublicationKey, clazz.getName())//
-				.query(this.publicationRowMapper)//
-				.stream() //
-				.sorted(Comparator.comparing(Publication::created).reversed()) //
-				.toList();
+			.sql(sql)//
+			.params(jsonPublicationKey, clazz.getName())//
+			.query(this.publicationRowMapper)//
+			.stream() //
+			.sorted(Comparator.comparing(Publication::created).reversed()) //
+			.toList();
 	}
 
 }

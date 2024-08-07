@@ -24,20 +24,20 @@ import java.util.concurrent.TimeUnit;
 class DefaultMogulService implements MogulService {
 
 	private final Map<String, Mogul> mogulsByName = new ConcurrentHashMap<>();
+
 	private final Map<Long, Mogul> mogulsById = new ConcurrentHashMap<>();
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	private final TransactionTemplate tt;
+
 	private final JdbcClient db;
 
 	private final ApplicationEventPublisher publisher;
 
 	private final MogulRowMapper mogulRowMapper = new MogulRowMapper();
 
-	DefaultMogulService(JdbcClient jdbcClient,
-						TransactionTemplate tt,
-						ApplicationEventPublisher publisher) {
+	DefaultMogulService(JdbcClient jdbcClient, TransactionTemplate tt, ApplicationEventPublisher publisher) {
 		this.db = jdbcClient;
 		this.publisher = publisher;
 		this.tt = tt;
@@ -97,15 +97,13 @@ class DefaultMogulService implements MogulService {
 		msg.append("trying to resolve mogul by name [").append(name).append("]");
 		var res = this.mogulsByName.computeIfAbsent(name, key -> {
 			var moguls = this.db//
-					.sql("select * from mogul where  username = ? ")
-					.param(key)
-					.query(this.mogulRowMapper)
-					.list();
+				.sql("select * from mogul where  username = ? ")
+				.param(key)
+				.query(this.mogulRowMapper)
+				.list();
 			Assert.state(moguls.size() <= 1, "there should only be one mogul with this username [" + name + "]");
 			var mogul = moguls.isEmpty() ? null : moguls.getFirst();
-			msg.append(", but had to hit the DB to find a mogul by name [")
-					.append(name)
-					.append("]");
+			msg.append(", but had to hit the DB to find a mogul by name [").append(name).append("]");
 			return mogul;
 		});
 		if (log.isDebugEnabled())

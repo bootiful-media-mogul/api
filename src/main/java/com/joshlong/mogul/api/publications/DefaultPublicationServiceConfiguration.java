@@ -13,10 +13,9 @@ class DefaultPublicationServiceConfiguration {
 
 	@Bean
 	DefaultPublicationService defaultPublicationService(JdbcClient client, MogulService mogulService,
-														TransactionTemplate tt, TextEncryptor textEncryptor, Settings settings) {
+			TransactionTemplate tt, TextEncryptor textEncryptor, Settings settings) {
 		var lookup = new SettingsLookupClient(settings);
-		return new DefaultPublicationService(client, mogulService, textEncryptor,
-				tt, lookup);
+		return new DefaultPublicationService(client, mogulService, textEncryptor, tt, lookup);
 	}
 
 }

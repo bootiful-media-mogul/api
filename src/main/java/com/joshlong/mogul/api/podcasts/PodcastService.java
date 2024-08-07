@@ -20,7 +20,7 @@ public interface PodcastService {
 
 	Segment getEpisodeSegmentById(Long episodeSegmentId);
 
-	Map<Episode , List<Segment>> getEpisodeSegmentsByEpisodes(List<Episode> episodes);
+	Map<Episode, List<Segment>> getEpisodeSegmentsByEpisodes(List<Episode> episodes);
 
 	List<Segment> getEpisodeSegmentsByEpisode(Long id);
 

@@ -33,11 +33,10 @@ public class NotificationEvents implements BeanFactoryAware, ApplicationEventPub
 		return BEAN_FACTORY_ATOMIC_REFERENCE.get().getBean(TransactionTemplate.class);
 	}
 
-
 	private static final Executor EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
 
 	private static Executor executor() {
-		return EXECUTOR ;
+		return EXECUTOR;
 	}
 
 	private static ApplicationEventPublisher eventPublisher() {
