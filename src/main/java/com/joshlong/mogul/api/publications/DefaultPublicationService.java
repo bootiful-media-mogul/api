@@ -162,17 +162,9 @@ class DefaultPublicationService implements PublicationService {
 		throw new IllegalStateException(
 				"we shouldn't get to this point. what are you doing looking up a publication whose ID (" + publicationId
 						+ ") doesn't match? ");
-
-		/*
-		 * this.db // .sql("select * from publication where id = ? ") //
-		 * .params(publicationId)// .query(this.publicationRowMapper)// .single();
-		 */
 	}
 
-	private final Map<CacheKey, Collection<Publication>> publicationsCache = new ConcurrentHashMap<>();
-
-	private record CacheKey(Class<?> clazz, Serializable publicationKey) {
-	}
+	private final Map<String, Collection<Publication>> publicationsCache = new ConcurrentHashMap<>();
 
 	private void refreshCache() {
 
@@ -180,26 +172,46 @@ class DefaultPublicationService implements PublicationService {
 			this.log.debug("refreshing the publication cache");
 
 		var publicationComparator = Comparator.comparing((Publication p) -> p.payloadClass() + ":" + p.payload());
-		this.db.sql("select * from publication").query(this.publicationRowMapper).stream().forEach(publication -> {
-			var key = new CacheKey(publication.payloadClass(), publication.payload());
-			this.publicationsCache.computeIfAbsent(key, cacheKey -> new ConcurrentSkipListSet<>(publicationComparator))
-				.add(publication);
-		});
+		this.db.sql("select * from publication") //
+			.query(this.publicationRowMapper) //
+			.stream()//
+			.forEach(publication -> {
+				var key = key(publication.payloadClass(), publication.payload());
+				this.publicationsCache
+					.computeIfAbsent(key, cacheKey -> new ConcurrentSkipListSet<>(publicationComparator))
+					.add(publication);
+				log.debug("adding publication {} to publications cache for cache key {} ", publication, key);
+			});
+	}
+
+	private String key(Class<?> c, Serializable s) {
+		return c.getName() + ":" + s.toString();
 	}
 
 	// todo cache the publications
 	@Override
 	public Collection<Publication> getPublicationsByPublicationKeyAndClass(Serializable publicationKey,
 			Class<?> clazz) {
-		var key = new CacheKey(clazz, publicationKey);
-		return this.publicationsCache.get(key)
-			.stream()
-			.sorted(Comparator.comparing(Publication::created).reversed())
-			.toList();
+		var key = key(clazz, publicationKey);
+		if (this.publicationsCache.containsKey(key)) {
+			var list = this.publicationsCache.get(key)
+				.stream()//
+				.sorted(Comparator.comparing(Publication::created).reversed())//
+				.toList();
+			log.debug("list of publications {} for key {}", list.size(), key);
+			return list;
+		}
+
+		return List.of();
 	}
 
 	@EventListener(ApplicationReadyEvent.class)
-	void ready() {
+	void applicationReady() {
+		this.refreshCache();
+	}
+
+	@EventListener(PublicationUpdatedEvent.class)
+	void updated() {
 		this.refreshCache();
 	}
 

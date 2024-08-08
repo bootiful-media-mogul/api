@@ -2,7 +2,6 @@ package com.joshlong.mogul.api.podcasts;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.joshlong.mogul.api.Settings;
-import com.joshlong.mogul.api.mogul.Mogul;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.notifications.NotificationEvent;
 import com.joshlong.mogul.api.podcasts.publication.PodcastEpisodePublisherPlugin;
@@ -18,7 +17,6 @@ import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Controller
 @RegisterReflectionForBinding(Map.class)
@@ -59,8 +57,12 @@ class PodcastController {
 
 	@SchemaMapping
 	Collection<Map<String, Object>> publications(Episode episode) {
+		var episodeKeyForLogging = episode.id() + "/" + episode.title();
 		var publications = this.publicationService.getPublicationsByPublicationKeyAndClass(episode.publicationKey(),
 				episode.getClass());
+		if (!publications.isEmpty()) {
+			this.log.debug("good news! there are " + "publications for episode {}", episodeKeyForLogging);
+		}
 		var newPublications = new ArrayList<Map<String, Object>>();
 		for (var p : publications) {
 			var defaultedValues = Map.of("id", p.id(), "mogulId", p.mogulId(), "plugin", p.plugin(), "created",
@@ -72,6 +74,8 @@ class PodcastController {
 				all.put("url", p.url());
 			newPublications.add(all);
 		}
+		if (!newPublications.isEmpty())
+			this.log.debug("returning {} publications for episode {}", newPublications.size(), episodeKeyForLogging);
 		return newPublications;
 	}
 
