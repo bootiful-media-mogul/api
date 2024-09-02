@@ -45,7 +45,7 @@ class DefaultMogulService implements MogulService {
 	private final MogulRowMapper mogulRowMapper = new MogulRowMapper();
 
 	DefaultMogulService(@Value("${auth0.domain}") String auth0Domain, JdbcClient jdbcClient,
-				ApplicationEventPublisher publisher) {
+			ApplicationEventPublisher publisher) {
 		this.auth0Domain = auth0Domain;
 		this.db = jdbcClient;
 		this.publisher = publisher;
@@ -67,7 +67,7 @@ class DefaultMogulService implements MogulService {
 
 	// just for the first time login
 	private record UserInfo(String sub, @JsonProperty("given_name") String givenName,
-							@JsonProperty("family_name") String familyName, String nickname, String picture, String email) {
+			@JsonProperty("family_name") String familyName, String nickname, String picture, String email) {
 	}
 
 	@Override

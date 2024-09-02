@@ -197,8 +197,7 @@ class DefaultManagedFileService implements ManagedFileService {
 		// the call to getManagedFile needs to be in a transaction. the reading of bytes
 		// most assuredly does not.
 		var mf = this.transactionTemplate.execute(status -> this.getManagedFile(managedFileId));
-		return this.storage
-				.read(mf.bucket(), mf.folder() + '/' + mf.storageFilename());
+		return this.storage.read(mf.bucket(), mf.folder() + '/' + mf.storageFilename());
 	}
 
 	private long contentLength(Resource resource) {
