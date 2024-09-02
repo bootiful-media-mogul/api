@@ -4,10 +4,16 @@ import org.springframework.core.io.Resource;
 
 import java.io.Serializable;
 
+/**
+ * all things that can produce bytes pointing to audio can avail themselves of a
+ * transcript.
+ */
 public interface Transcribable {
 
-	Serializable key();
+	Class<?> subject();
 
-	Resource audio(); // maybe i need an actual ManagedFile? do i want o make that leap?
+	Serializable transcriptionKey();
+
+	Resource audio();
 
 }

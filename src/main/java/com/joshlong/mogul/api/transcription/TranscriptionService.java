@@ -4,6 +4,6 @@ import com.joshlong.mogul.api.Transcribable;
 
 public interface TranscriptionService {
 
-	void requestTranscription(Transcribable transcribable) throws Exception;
+	void requestTranscription(Transcribable transcribable);
 
 }

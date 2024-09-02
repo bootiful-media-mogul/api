@@ -10,7 +10,9 @@ public interface PodcastService {
 
 	String PODCAST_EPISODES_BUCKET = "mogul-podcast-episodes";
 
-	Segment createEpisodeSegment(Long mogulId, Long episodeId, String name, long crossfade);
+	Segment createPodcastEpisodeSegment(Long mogulId, Long episodeId, String name, long crossfade);
+
+	void setPodcastEpisodesSegmentTranscript(Long episodeSegmentId, String transcript);
 
 	void movePodcastEpisodeSegmentUp(Long episode, Long segment);
 
@@ -18,15 +20,15 @@ public interface PodcastService {
 
 	void deletePodcastEpisodeSegment(Long episodeSegmentId);
 
-	Segment getEpisodeSegmentById(Long episodeSegmentId);
+	Segment getPodcastEpisodeSegmentById(Long episodeSegmentId);
 
-	Map<Long, List<Segment>> getEpisodeSegmentsByEpisodes(Collection<Long> episodeIds);
+	Map<Long, List<Segment>> getPodcastEpisodeSegmentsByEpisodes(Collection<Long> episodeIds);
 
-	List<Segment> getEpisodeSegmentsByEpisode(Long id);
+	List<Segment> getPodcastEpisodeSegmentsByEpisode(Long id);
 
 	Collection<Podcast> getAllPodcastsByMogul(Long mogulId);
 
-	Collection<Episode> getEpisodesByPodcast(Long podcastId);
+	Collection<Episode> getPodcastEpisodesByPodcast(Long podcastId);
 
 	Podcast createPodcast(Long mogulId, String title);
 
@@ -35,7 +37,7 @@ public interface PodcastService {
 
 	Podcast getPodcastById(Long podcastId);
 
-	Episode getEpisodeById(Long episodeId);
+	Episode getPodcastEpisodeById(Long episodeId);
 
 	void deletePodcast(Long podcastId);
 
@@ -45,8 +47,8 @@ public interface PodcastService {
 
 	Episode updatePodcastEpisodeDraft(Long episodeId, String title, String description);
 
-	Episode writePodcastEpisodeProducedAudio(Long episodeId, Long managedFileId);
+	void writePodcastEpisodeProducedAudio(Long episodeId, Long managedFileId);
 
-	Collection<Episode> getAllEpisodesByIds(List<Long> episodeIds);
+	Collection<Episode> getAllPodcastEpisodesByIds(List<Long> episodeIds);
 
 }

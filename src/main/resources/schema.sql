@@ -103,5 +103,6 @@ create table if not exists podcast_episode_segment
     produced_segment_audio_managed_file_id bigint not null references managed_file (id),
     cross_fade_duration                    bigint not null default 0,
     name                                   text   not null,
+    transcript                             text   not null,
     sequence_number                        int    not null default 0
 );

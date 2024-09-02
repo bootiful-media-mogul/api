@@ -78,9 +78,10 @@ type Episode {
 
 type Segment {
     id : ID
-    name :String
+    name : String
+    transcript : String
     audio: ManagedFile
-    producedAudio: ManagedFile
+    producedAudio : ManagedFile
     order : Int
     crossFadeDuration : Int
 }

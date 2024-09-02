@@ -80,7 +80,7 @@ class ProductionIntegrationFlowConfiguration {
 					var outputS3Uri = source.producedAudio().s3Uri().toString();
 					var episodeId = source.id();
 					var listOfInputSegments = new ArrayList<ProducerInputSegment>();
-					var segments = podcastService.getEpisodeSegmentsByEpisode(episodeId);
+					var segments = podcastService.getPodcastEpisodeSegmentsByEpisode(episodeId);
 					for (var i = 0; i < segments.size(); i++) {
 						var seg = segments.get(i);
 						listOfInputSegments.add(new ProducerInputSegment(i, seg.producedAudio().s3Uri().toString(),
@@ -130,7 +130,7 @@ class ProductionIntegrationFlowConfiguration {
 		var episodeId = episodeIdValue instanceof String episodeIdString ? //
 				Long.parseLong(episodeIdString)//
 				: ((Number) episodeIdValue).longValue();
-		var episode = podcastService.getEpisodeById(episodeId);
+		var episode = podcastService.getPodcastEpisodeById(episodeId);
 		var producedAudio = episode.producedAudio();
 		this.log.debug("writing [{}]", episode.id());
 		podcastService.writePodcastEpisodeProducedAudio(episode.id(), producedAudio.id());

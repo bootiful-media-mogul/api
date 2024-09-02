@@ -35,12 +35,6 @@ public class ApiApplication {
 		@Override
 		public void registerHints(RuntimeHints hints, ClassLoader classLoader) {
 			var mcs = MemberCategory.values();
-
-			hints.proxies()
-				.registerJdkProxy(PodcastEpisodePublisherPlugin.class, org.springframework.aop.SpringProxy.class,
-						org.springframework.aop.framework.Advised.class,
-						org.springframework.core.DecoratingProxy.class);
-
 			for (var c : Set.of(Mogul.class, MogulCreatedEvent.class))
 				hints.reflection().registerType(c, mcs);
 		}

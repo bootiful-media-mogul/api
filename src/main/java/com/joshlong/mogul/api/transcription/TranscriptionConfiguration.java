@@ -22,47 +22,20 @@ import java.io.Serializable;
 // - what if there's an error in transcription? retry? durable requests?
 // - how may requests can we handle at the same time? what's concurrence lok like? is this a job for `JobScheduler`?
 
-/**
- * asynchronously handles requests for transcription and produces responses
- * <p>
- * todo im not sure what the response should look? a string? how will it eventually result
- * in the string being attache dto a podcast, video, etc? should we send in a callback? or
- * have a central handler that looks up things by some sort of key and theres a
- */
 @Configuration
 class TranscriptionConfiguration {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
-	/**
-	 * we have Transcribable. could we derive some sort of key that could be used to
-	 * resolve the record given its class and a key? so, given a Transcribable, return
-	 * identity that we use as a correlation key. message comes back. we have the
-	 * transcription service look up a given type via a collection of registered
-	 * TranscribableResolvers? eg, given a key 242327 and PodcastEpisode.class, there's a
-	 * TranscribableResolver whihc knows how to look up that Transcribable (call
-	 * PodcastService#getPodcastEpisode(key)) and then call
-	 * Transcribable#onTranscription(String transcript)? does this mean we'd have to have
-	 * transactional logic in the entity itself tho? otherwise how would the updated state
-	 * hit the sql db? No, maybe each package could contribute a bean of type
-	 * TranscriptResolver (which would be a root type) and when the message comes back,
-	 * we'd look up the TranscriptResolver by its key and class type. It in turn could be
-	 * a service (lets say PodcastService implements TranscriptResolver, or something). So
-	 * what would it need? it'd need the key for the thing that's been transcribed. the
-	 * ID, if nothing else. So maybe Transcribable should have a `Serialiazable key()`, as
-	 * well? Like `Publishable`.
-	 */
+	private static final String TRANSCRIPTION_REQUESTS_CHANNEL = "transcriptionRequestsMessageChannel";
 
-	static final String TRANSCRIPTION_REQUESTS_CHANNEL = "transcriptionRequests";
+	private static final String TRANSCRIPTION_REPLIES_CHANNEL = "transcriptionRepliesMessageChannel";
 
-	static final String TRANSCRIPTION_REPLIES_CHANNEL = "transcriptionReplies";
-
-	// a typical transcription could take a minute or an hour. we just can't know. using
-	// spring integration here is nice
-	// because we can send all these requests out to AMQP (thus making them durable) and
-	// we can serialize their processing or
-	// control the concurrency for their processing here in our spring application.
-	//
+	@Bean
+	DefaultTranscriptionService transcriptionService(
+			@Qualifier(TRANSCRIPTION_REQUESTS_CHANNEL) MessageChannel requests) {
+		return new DefaultTranscriptionService(requests);
+	}
 
 	@Bean(name = TRANSCRIPTION_REPLIES_CHANNEL)
 	MessageChannelSpec<DirectChannelSpec, DirectChannel> transcriptionReplies() {
@@ -72,21 +45,30 @@ class TranscriptionConfiguration {
 	@Bean(name = TRANSCRIPTION_REQUESTS_CHANNEL)
 	MessageChannelSpec<DirectChannelSpec, DirectChannel> transcriptionRequests() {
 		return MessageChannels.direct();
-
 	}
 
 	@Bean
 	IntegrationFlow transcriptionRequestsIntegrationFlow(
+			@Qualifier(TRANSCRIPTION_REQUESTS_CHANNEL) MessageChannel requests,
 			@Qualifier(TRANSCRIPTION_REPLIES_CHANNEL) MessageChannel replies,
 			OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel) {
-		return IntegrationFlow.from(transcriptionRequests())//
+		return IntegrationFlow//
+			.from(requests)//
 			.transform((GenericHandler<TranscriptionRequest>) (payload, headers) -> {
-				this.log.info("got a request for [{}]", payload);
+				this.log.debug("got a transcription request for [{}]", payload);
 				var transcribable = payload.transcribable();
 				var resource = transcribable.audio();
-				var reply = openAiAudioTranscriptionModel.call(resource);
-				var key = transcribable.key();
-				return new TranscriptionReply(key, reply);
+				var subject = transcribable.subject();
+				var key = transcribable.transcriptionKey();
+				try {
+					this.log.debug("about to perform transcription using OpenAI for transcribable with key {}", key);
+					var transcriptionReply = openAiAudioTranscriptionModel.call(resource);
+					return new TranscriptionReply(key, subject, transcriptionReply, null);
+				} //
+				catch (Throwable throwable) {
+					return new TranscriptionReply(key, subject, null,
+							new TranscriptionReply.Error(throwable.getMessage()));
+				}
 			})//
 			.channel(replies)
 			.get();
@@ -99,7 +81,8 @@ class TranscriptionConfiguration {
 			.from(replies) //
 			.handle((GenericHandler<TranscriptionReply>) (payload, headers) -> { //
 				// todo use the spring integration event adapter?
-				var transcriptionProcessedEvent = new TranscriptionProcessedEvent(payload.key(), payload.transcript());
+				var transcriptionProcessedEvent = new TranscriptionProcessedEvent(payload.key(), payload.transcript(),
+						payload.subject());
 				publisher.publishEvent(transcriptionProcessedEvent);
 				return null;
 			})
@@ -108,5 +91,9 @@ class TranscriptionConfiguration {
 
 }
 
-record TranscriptionReply(Serializable key, String transcript) {
+record TranscriptionReply(Serializable key, Class<?> subject, String transcript, Error error) {
+
+	record Error(String details) {
+	}
+
 }

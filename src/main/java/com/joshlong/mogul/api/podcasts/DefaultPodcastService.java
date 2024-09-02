@@ -43,7 +43,7 @@ class DefaultPodcastService implements PodcastService {
 
 	private final PodcastRowMapper podcastRowMapper;
 
-	private final EpisodeSegmentRowMapper episodeSegmentRowMapper;
+	private final SegmentRowMapper episodeSegmentRowMapper;
 
 	private final MogulService mogulService;
 
@@ -63,11 +63,11 @@ class DefaultPodcastService implements PodcastService {
 		this.managedFileService = managedFileService;
 		this.publisher = publisher;
 		this.podcastRowMapper = new PodcastRowMapper();
-		this.episodeSegmentRowMapper = new EpisodeSegmentRowMapper(this.managedFileService::getManagedFile);
+		this.episodeSegmentRowMapper = new SegmentRowMapper(this.managedFileService::getManagedFile);
 	}
 
 	@Override
-	public Map<Long, List<Segment>> getEpisodeSegmentsByEpisodes(Collection<Long> episodes) {
+	public Map<Long, List<Segment>> getPodcastEpisodeSegmentsByEpisodes(Collection<Long> episodes) {
 
 		Assert.state(!episodes.isEmpty(), "there are no episode segments");
 		var idsAsString = episodes.stream().map(e -> Long.toString(e)).collect(Collectors.joining(", "));
@@ -84,7 +84,7 @@ class DefaultPodcastService implements PodcastService {
 	}
 
 	@Override
-	public List<Segment> getEpisodeSegmentsByEpisode(Long episodeId) {
+	public List<Segment> getPodcastEpisodeSegmentsByEpisode(Long episodeId) {
 		this.log.debug("trying to resolve episode segments for episode #{} from the DB", episodeId);
 		var sql = " select * from podcast_episode_segment where podcast_episode_id = ? order by sequence_number ASC ";
 		var episodeSegmentsFromDb = this.db //
@@ -93,10 +93,10 @@ class DefaultPodcastService implements PodcastService {
 			.query(this.episodeSegmentRowMapper) //
 			.stream()//
 			.sorted(Comparator.comparingInt(Segment::order))//
-			.toList();
-		this.log.debug("episodeSegmentsFromDb length: {} data: {}", episodeSegmentsFromDb.size(),
-				episodeSegmentsFromDb);
-		return episodeSegmentsFromDb;
+			.toList();// this list is unmodifiable, annoyingly.
+		var newList = new ArrayList<>(episodeSegmentsFromDb);
+		this.log.debug("episodeSegmentsFromDb length: {} data: {}", newList.size(), newList);
+		return newList;
 	}
 
 	@EventListener
@@ -126,8 +126,8 @@ class DefaultPodcastService implements PodcastService {
 		// getPodcastById(this.getEpisodeById(episodeId).podcastId()).mogulId();
 		// this.podcasts.remove(mogul);
 
-		var episode = this.getEpisodeById(episodeId);
-		var segments = this.getEpisodeSegmentsByEpisode(episodeId);
+		var episode = this.getPodcastEpisodeById(episodeId);
+		var segments = this.getPodcastEpisodeSegmentsByEpisode(episodeId);
 
 		if (episode.graphic().id().equals(mf.id())) { // either it's the graphic..
 			this.mediaNormalizer
@@ -157,9 +157,9 @@ class DefaultPodcastService implements PodcastService {
 	}
 
 	private void refreshPodcastEpisodeCompleteness(Long episodeId) {
-		var episode = this.getEpisodeById(episodeId);
+		var episode = this.getPodcastEpisodeById(episodeId);
 		var mogulId = episode.producedAudio().mogulId(); // hacky.
-		var segments = this.getEpisodeSegmentsByEpisode(episodeId);
+		var segments = this.getPodcastEpisodeSegmentsByEpisode(episodeId);
 		var graphicsWritten = episode.graphic().written() && episode.producedGraphic().written();
 		var complete = graphicsWritten && !segments.isEmpty()
 				&& (segments.stream().allMatch(se -> se.audio().written() && se.producedAudio().written()));
@@ -190,7 +190,7 @@ class DefaultPodcastService implements PodcastService {
 
 		this.db.sql("update podcast_episode set complete = ? where id = ? ").params(complete, episode.id()).update();
 		this.log.debug("updating podcast episode #{} to complete = {}", episode.id(), complete);
-		var episodeById = this.getEpisodeById(episode.id());
+		var episodeById = this.getPodcastEpisodeById(episode.id());
 
 		if (this.log.isDebugEnabled())
 			this.log.debug("the episode #{} is complete complete? {}", episode.id(), episodeById.complete());
@@ -205,26 +205,27 @@ class DefaultPodcastService implements PodcastService {
 	@ApplicationModuleListener
 	void mogulCreated(MogulCreatedEvent createdEvent) {
 		var podcast = this.createPodcast(createdEvent.mogul().id(), createdEvent.mogul().username() + "'s Podcast");
-		Assert.notNull(podcast, "there should be a newly created podcast" + " associated with the mogul ["
-				+ createdEvent.mogul() + "]");
+		Assert.notNull(podcast,
+				"there should be a newly created podcast associated with the mogul [" + createdEvent.mogul() + "]");
 	}
 
 	@Override
-	public Collection<Episode> getEpisodesByPodcast(Long podcastId) {
+	public Collection<Episode> getPodcastEpisodesByPodcast(Long podcastId) {
 		var podcast = this.getPodcastById(podcastId);
 		Assert.notNull(podcast, "the podcast with id [" + podcastId + "] is null");
 		var episodeRowMapper = new EpisodeRowMapper(this.managedFileService::getManagedFile,
 				episodeId -> new ArrayList<>());
-		var eps = this.db.sql(" select * from podcast_episode pe where pe.podcast_id = ? ")
-			.param(podcastId)
-			.query(episodeRowMapper)
+		var eps = this.db//
+			.sql(" select * from podcast_episode pe where pe.podcast_id = ? ") //
+			.param(podcastId)//
+			.query(episodeRowMapper)//
 			.list();
 		var epIdToEpisode = new HashMap<Long, Episode>();
 		for (var e : eps)
 			epIdToEpisode.put(e.id(), e);
 
 		var ids = eps.stream().map(Episode::id).toList();
-		var segs = this.getEpisodeSegmentsByEpisodes(ids);
+		var segs = this.getPodcastEpisodeSegmentsByEpisodes(ids);
 
 		for (var e : segs.entrySet()) {
 			var episodeId = e.getKey();
@@ -279,15 +280,15 @@ class DefaultPodcastService implements PodcastService {
 			.update(kh);
 		var id = JdbcUtils.getIdFromKeyHolder(kh);
 		var episodeId = id.longValue();
-		var episode = this.getEpisodeById(episodeId); // yuck.
+		var episode = this.getPodcastEpisodeById(episodeId); // yuck.
 		this.publisher.publishEvent(new PodcastEpisodeCreatedEvent(episode));// reset
 																				// cache
 		return episode;
 	}
 
 	@Override
-	public Episode getEpisodeById(Long episodeId) {
-		var erm = new EpisodeRowMapper(managedFileService::getManagedFile, this::getEpisodeSegmentsByEpisode);//
+	public Episode getPodcastEpisodeById(Long episodeId) {
+		var erm = new EpisodeRowMapper(managedFileService::getManagedFile, this::getPodcastEpisodeSegmentsByEpisode);//
 		var res = this.db //
 			.sql("select * from podcast_episode where id =?")//
 			.param(episodeId)//
@@ -310,8 +311,8 @@ class DefaultPodcastService implements PodcastService {
 	 * collection, +1 if it's to be moved later.
 	 */
 	private void moveEpisodeSegment(Long episodeId, Long segmentId, int position) {
-		var segments = this.getEpisodeSegmentsByEpisode(episodeId);
-		var segment = this.getEpisodeSegmentById(segmentId);
+		var segments = this.getPodcastEpisodeSegmentsByEpisode(episodeId);
+		var segment = this.getPodcastEpisodeSegmentById(segmentId);
 		var positionOfSegment = segments.indexOf(segment);
 		var newPositionOfSegment = positionOfSegment + position;
 		if (newPositionOfSegment < 0 || newPositionOfSegment > (segments.size() - 1)) {
@@ -321,8 +322,8 @@ class DefaultPodcastService implements PodcastService {
 		segments.remove(segment);
 		segments.add(newPositionOfSegment, segment);
 		this.reorderSegments(segments);
-		var epId = this.getEpisodeSegmentById(segmentId).episodeId();
-		var ep = this.getEpisodeById(epId);
+		var epId = this.getPodcastEpisodeSegmentById(segmentId).episodeId();
+		var ep = this.getPodcastEpisodeById(epId);
 		this.publisher.publishEvent(new PodcastEpisodeUpdatedEvent(ep));
 	}
 
@@ -346,20 +347,20 @@ class DefaultPodcastService implements PodcastService {
 
 	@Override
 	public void deletePodcastEpisodeSegment(Long episodeSegmentId) {
-		var segment = this.getEpisodeSegmentById(episodeSegmentId);
+		var segment = this.getPodcastEpisodeSegmentById(episodeSegmentId);
 		Assert.state(segment != null, "you must specify a valid " + Segment.class.getName());
 		var managedFilesToDelete = Set.of(segment.audio().id(), segment.producedAudio().id());
 		this.db.sql("delete from podcast_episode_segment where id =?").params(episodeSegmentId).update();
 		for (var managedFileId : managedFilesToDelete)
 			this.managedFileService.deleteManagedFile(managedFileId);
-		this.reorderSegments(this.getEpisodeSegmentsByEpisode(segment.episodeId()));
+		this.reorderSegments(this.getPodcastEpisodeSegmentsByEpisode(segment.episodeId()));
 		this.refreshPodcastEpisodeCompleteness(segment.episodeId());
 	}
 
 	@Override
 	public void deletePodcast(Long podcastId) {
 		var podcast = this.getPodcastById(podcastId);
-		for (var episode : this.getEpisodesByPodcast(podcastId)) {
+		for (var episode : this.getPodcastEpisodesByPodcast(podcastId)) {
 			this.deletePodcastEpisode(episode.id());
 		}
 		this.db.sql("delete from podcast where id= ?").param(podcastId).update();
@@ -368,7 +369,7 @@ class DefaultPodcastService implements PodcastService {
 
 	@Override
 	public void deletePodcastEpisode(Long episodeId) {
-		var segmentsForEpisode = this.getEpisodeSegmentsByEpisode(episodeId);
+		var segmentsForEpisode = this.getPodcastEpisodeSegmentsByEpisode(episodeId);
 		if (segmentsForEpisode == null)
 			segmentsForEpisode = new ArrayList<>();
 
@@ -377,7 +378,7 @@ class DefaultPodcastService implements PodcastService {
 				ids.add(mf.id());
 		};
 
-		var episode = this.getEpisodeById(episodeId);
+		var episode = this.getPodcastEpisodeById(episodeId);
 
 		var ids = new HashSet<Long>();
 		func.accept(episode.graphic(), ids);
@@ -407,7 +408,7 @@ class DefaultPodcastService implements PodcastService {
 	}
 
 	@Override
-	public Segment createEpisodeSegment(Long mogulId, Long episodeId, String name, long crossfade) {
+	public Segment createPodcastEpisodeSegment(Long mogulId, Long episodeId, String name, long crossfade) {
 		var maxOrder = (this.db
 			.sql("select max( sequence_number) from podcast_episode_segment where podcast_episode_id = ? ")
 			.params(episodeId)
@@ -447,15 +448,29 @@ class DefaultPodcastService implements PodcastService {
 					maxOrder)
 			.update(gkh);
 		var id = JdbcUtils.getIdFromKeyHolder(gkh);
-		var episodeSegmentsByEpisode = this.getEpisodeSegmentsByEpisode(episodeId);
+		var episodeSegmentsByEpisode = this.getPodcastEpisodeSegmentsByEpisode(episodeId);
 		this.log.debug("episode segments: {}", episodeSegmentsByEpisode);
 		this.reorderSegments(episodeSegmentsByEpisode);
 		this.refreshPodcastEpisodeCompleteness(episodeId);
-		return this.getEpisodeSegmentById(id.longValue());
+		return this.getPodcastEpisodeSegmentById(id.longValue());
 	}
 
 	@Override
-	public Segment getEpisodeSegmentById(Long episodeSegmentId) {
+	public void setPodcastEpisodesSegmentTranscript(Long episodeSegmentId, String transcript) {
+		var segment = getPodcastEpisodeSegmentById(episodeSegmentId);
+		if (null != segment) {
+
+			this.db.sql("update podcast_episode_segment set transcript = ? where id = ? ")
+				.params(transcript, segment.id())
+				.update();
+
+		} //
+		else
+			log.debug("could not find the podcast episode segment with id: {} ", episodeSegmentId);
+	}
+
+	@Override
+	public Segment getPodcastEpisodeSegmentById(Long episodeSegmentId) {
 		return this.db//
 			.sql("select * from podcast_episode_segment where id =?")//
 			.params(episodeSegmentId)
@@ -477,8 +492,9 @@ class DefaultPodcastService implements PodcastService {
 		var producedAudio = this.managedFileService.createManagedFile(currentMogulId, bucket, uid, "produced-audio.mp3",
 				0, CommonMediaTypes.MP3);
 		var episode = this.createPodcastEpisode(podcastId, title, description, image, producedGraphic, producedAudio);
-		this.createEpisodeSegment(currentMogulId, episode.id(), "", 0);
-		return this.getEpisodeById(episode.id());
+		var seg = this.createPodcastEpisodeSegment(currentMogulId, episode.id(), "", 0);
+		Assert.notNull(seg, "could not create a podcast episode segment for episode " + episode.id());
+		return this.getPodcastEpisodeById(episode.id());
 	}
 
 	@Override
@@ -489,12 +505,12 @@ class DefaultPodcastService implements PodcastService {
 		this.db.sql("update podcast_episode set title = ?, description =? where id = ?")
 			.params(title, description, episodeId)
 			.update();
-		this.publisher.publishEvent(new PodcastEpisodeUpdatedEvent(this.getEpisodeById(episodeId)));
-		return this.getEpisodeById(episodeId);
+		this.publisher.publishEvent(new PodcastEpisodeUpdatedEvent(this.getPodcastEpisodeById(episodeId)));
+		return this.getPodcastEpisodeById(episodeId);
 	}
 
 	@Override
-	public Episode writePodcastEpisodeProducedAudio(Long episodeId, Long managedFileId) {
+	public void writePodcastEpisodeProducedAudio(Long episodeId, Long managedFileId) {
 		try {
 			this.managedFileService.refreshManagedFile(managedFileId);
 			this.db //
@@ -502,8 +518,8 @@ class DefaultPodcastService implements PodcastService {
 				.params(new Date(), episodeId) //
 				.update();
 			this.log.debug("updated episode {} to have non-null produced_audio_updated", episodeId);
-			this.publisher.publishEvent(new PodcastEpisodeUpdatedEvent(getEpisodeById(episodeId)));
-			return this.getEpisodeById(episodeId);
+			this.publisher.publishEvent(new PodcastEpisodeUpdatedEvent(getPodcastEpisodeById(episodeId)));
+			this.getPodcastEpisodeById(episodeId);
 		} //
 		catch (Throwable throwable) {
 			throw new RuntimeException("got an exception dealing with " + throwable.getLocalizedMessage(), throwable);
@@ -511,8 +527,8 @@ class DefaultPodcastService implements PodcastService {
 	}
 
 	@Override
-	public Collection<Episode> getAllEpisodesByIds(List<Long> episodeIds) {
-		var episodesToSegments = this.getEpisodeSegmentsByEpisodes(episodeIds);
+	public Collection<Episode> getAllPodcastEpisodesByIds(List<Long> episodeIds) {
+		var episodesToSegments = this.getPodcastEpisodeSegmentsByEpisodes(episodeIds);
 		var ids = episodeIds.stream().map(e -> Long.toString(e)).collect(Collectors.joining(","));
 		return db.sql("select * from podcast_episode pe where pe.id in ( " + ids + " )")
 			.query(new EpisodeRowMapper(managedFileService::getManagedFile, episodesToSegments::get))
