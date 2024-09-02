@@ -196,8 +196,9 @@ class DefaultManagedFileService implements ManagedFileService {
 	public Resource read(Long managedFileId) {
 		// the call to getManagedFile needs to be in a transaction. the reading of bytes
 		// most assuredly does not.
-		var mf = this.transactionTemplate.execute(status -> getManagedFile(managedFileId));
-		return this.storage.read(mf.bucket(), mf.folder() + '/' + mf.storageFilename());
+		var mf = this.transactionTemplate.execute(status -> this.getManagedFile(managedFileId));
+		return this.storage
+				.read(mf.bucket(), mf.folder() + '/' + mf.storageFilename());
 	}
 
 	private long contentLength(Resource resource) {
@@ -209,8 +210,8 @@ class DefaultManagedFileService implements ManagedFileService {
 		}
 	}
 
-	@Transactional
 	@Override
+	@Transactional
 	public ManagedFile createManagedFile(Long mogulId, String bucket, String folder, String fileName, long size,
 			MediaType mediaType) {
 		var kh = new GeneratedKeyHolder();

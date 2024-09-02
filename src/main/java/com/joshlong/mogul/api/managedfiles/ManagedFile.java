@@ -68,7 +68,7 @@ public class ManagedFile {
 	}
 
 	private void ensureInitialized() {
-		if (!initialized.get()) {
+		if (!this.initialized.get()) {
 			// todo should this failure result in a read through to the DB? is there some
 			// way to make this lazily load its own data? can we give it a callback?
 			this.hydration.accept(this);

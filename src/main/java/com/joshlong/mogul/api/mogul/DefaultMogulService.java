@@ -45,7 +45,7 @@ class DefaultMogulService implements MogulService {
 	private final MogulRowMapper mogulRowMapper = new MogulRowMapper();
 
 	DefaultMogulService(@Value("${auth0.domain}") String auth0Domain, JdbcClient jdbcClient,
-			ApplicationEventPublisher publisher) {
+				ApplicationEventPublisher publisher) {
 		this.auth0Domain = auth0Domain;
 		this.db = jdbcClient;
 		this.publisher = publisher;
@@ -67,7 +67,7 @@ class DefaultMogulService implements MogulService {
 
 	// just for the first time login
 	private record UserInfo(String sub, @JsonProperty("given_name") String givenName,
-			@JsonProperty("family_name") String familyName, String nickname, String picture, String email) {
+							@JsonProperty("family_name") String familyName, String nickname, String picture, String email) {
 	}
 
 	@Override
@@ -107,11 +107,7 @@ class DefaultMogulService implements MogulService {
 			mogulByName = this.getMogulByName(principalName);
 			this.publisher.publishEvent(new MogulCreatedEvent(mogulByName));
 		}
-
 		this.publisher.publishEvent(new MogulAuthenticatedEvent(mogulByName));
-		// todo publish some sort of MogulAuthenticatedEvent so that we can use that as a
-		// cue in the PodcastService to load the
-		// particular mogul's data into memory.
 		return mogulByName;
 	}
 

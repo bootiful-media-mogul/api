@@ -26,19 +26,28 @@ public abstract class CommonMediaTypes {
 
 	// images
 	public static final MediaType PNG = MediaType.IMAGE_PNG;
-
 	public static final MediaType WEBP = MediaType.parseMediaType("image/webp");
-
 	public static final MediaType JPG = MediaType.IMAGE_JPEG;
-
 	public static final MediaType GIF = MediaType.IMAGE_GIF; // yuck
 
 	// movies
-	public static final MediaType MP3 = MediaType.parseMediaType("audio/mpeg");
-
 	public static final MediaType MP4 = MediaType.parseMediaType("application/mp4");
+
 
 	// audio
 	public static final MediaType WAV = MediaType.parseMediaType("audio/wav");
+	public static final MediaType MP3 = MediaType.parseMediaType("audio/mpeg");
 
+	// 
+/*	public static boolean isAudio(MediaType mediaType) {
+		return mediaType.includes(MediaType.valueOf("audio"));
+	}
+
+	public static boolean isVideo(MediaType mediaType) {
+		return mediaType.includes(MediaType.valueOf("video"));
+	}
+
+	public static boolean isImage(MediaType mediaType) {
+		return mediaType.includes(MediaType.valueOf("image"));
+	}*/
 }
