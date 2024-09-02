@@ -12,7 +12,7 @@ public interface PodcastService {
 
 	Segment createPodcastEpisodeSegment(Long mogulId, Long episodeId, String name, long crossfade);
 
-	void setPodcastEpisodesSegmentTranscript(Long episodeSegmentId, String transcript);
+	void setPodcastEpisodesSegmentTranscript(Long episodeSegmentId, boolean transcribable, String transcript);
 
 	void movePodcastEpisodeSegmentUp(Long episode, Long segment);
 

@@ -100,9 +100,10 @@ class PodcastEpisodeSegmentTranscriptionProcessedEventListener {
 		if (StringUtils.hasText(txt) && clzz.getName().equals(Segment.class.getName())
 				&& key instanceof Number number) {
 			var id = number.longValue();
-			this.log.debug("the id of the podcast episode segment that we're updating is {} and the transcript is {}",
-					id, txt);
-			this.podcastService.setPodcastEpisodesSegmentTranscript(id, txt);
+			this.log.debug(
+					"the id of the podcast episode segment" + " that we're updating is {} and the transcript is {}", id,
+					txt);
+			this.podcastService.setPodcastEpisodesSegmentTranscript(id, true, txt);
 		}
 
 	}

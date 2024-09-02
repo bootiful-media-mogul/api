@@ -15,6 +15,11 @@ import java.nio.charset.Charset;
 import java.util.Map;
 import java.util.Objects;
 
+// 
+// this works with our local whisper service. does it support files 
+// as large as two hours? who knows. we need to solve the batching issue no matter what, 
+// as there's going to be a ton of problems w/ larger youtube videos one day.
+// 
 class TranscriptionClient {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());

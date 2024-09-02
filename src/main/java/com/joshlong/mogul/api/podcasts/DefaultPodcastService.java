@@ -456,17 +456,16 @@ class DefaultPodcastService implements PodcastService {
 	}
 
 	@Override
-	public void setPodcastEpisodesSegmentTranscript(Long episodeSegmentId, String transcript) {
-		var segment = getPodcastEpisodeSegmentById(episodeSegmentId);
+	public void setPodcastEpisodesSegmentTranscript(Long episodeSegmentId, boolean transcribable, String transcript) {
+		var segment = this.getPodcastEpisodeSegmentById(episodeSegmentId);
 		if (null != segment) {
-
-			this.db.sql("update podcast_episode_segment set transcript = ? where id = ? ")
-				.params(transcript, segment.id())
+			this.db.sql("update podcast_episode_segment set transcript = ?, transcribable = ?  where id = ? ")
+				.params(transcript, transcribable, segment.id())
 				.update();
-
 		} //
-		else
-			log.debug("could not find the podcast episode segment with id: {} ", episodeSegmentId);
+		else {
+			this.log.debug("could not find the podcast episode segment with id: {} ", episodeSegmentId);
+		}
 	}
 
 	@Override

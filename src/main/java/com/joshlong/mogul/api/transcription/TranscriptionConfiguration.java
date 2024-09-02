@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.Resource;
 import org.springframework.integration.channel.DirectChannel;
 import org.springframework.integration.core.GenericHandler;
 import org.springframework.integration.dsl.DirectChannelSpec;
@@ -15,7 +16,8 @@ import org.springframework.integration.dsl.MessageChannelSpec;
 import org.springframework.integration.dsl.MessageChannels;
 import org.springframework.messaging.MessageChannel;
 
-import java.io.Serializable;
+import java.io.*;
+import java.util.List;
 
 // todo figure out failure modes?
 // - what if the reply comes back and the segment has been deleted?
@@ -46,6 +48,13 @@ class TranscriptionConfiguration {
 	MessageChannelSpec<DirectChannelSpec, DirectChannel> transcriptionRequests() {
 		return MessageChannels.direct();
 	}
+
+	// spring integration can do this.
+	// we need to change this integration flow to do scatter-gather division of the file
+	// and then route each tranch
+	// through the transcription service then return a string and an X/N part and use that
+	// to assemble a full transcript
+	// that then gets set on the episode in aggregate.
 
 	@Bean
 	IntegrationFlow transcriptionRequestsIntegrationFlow(
@@ -89,6 +98,12 @@ class TranscriptionConfiguration {
 			.get();
 	}
 
+}
+
+record TranscriptionSegment(Resource audio, int order, String start, String stop) {
+}
+
+record TranscriptionBatch(List<TranscriptionSegment> segments) {
 }
 
 record TranscriptionReply(Serializable key, Class<?> subject, String transcript, Error error) {
