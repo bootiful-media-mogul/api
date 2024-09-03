@@ -24,18 +24,19 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * this is an implementation of {@link TranscriptionService transcription service } that divides larger files into smaller ones
+ * and then transcribes each of those, aggregating all the results into one big transcript. it also takes care to try to divine
+ * pauses - gaps of silence - in the audio and cut along those gaps.
+ */
 class ChunkingTranscriptionService implements TranscriptionService {
 
+	private final Logger log = LoggerFactory.getLogger(getClass());
 	private static final ThreadLocal<NumberFormat> NUMBER_FORMAT = new ThreadLocal<>();
-
 	private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
-
 	private final Map<Instant, Set<File>> filesToDelete = new ConcurrentHashMap<>();
-
 	private final OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel;
-
 	private final File root;
-
 	private final long maxFileSize;
 
 	ChunkingTranscriptionService(OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel, File root,
@@ -48,14 +49,19 @@ class ChunkingTranscriptionService implements TranscriptionService {
 		Assert.state(this.maxFileSize > 0, "the max file size must be greater than zero");
 		Assert.state(this.root.exists() || this.root.mkdirs(),
 				"the root for transcription, " + this.root.getAbsolutePath() + ", could not be created");
+		// garbage files reaper just in case, for whatever reason, we leave a mess behind.
 		var cleanup = new TranscriptionFileCleanupRunnable();
-
 		Executors.newScheduledThreadPool(1).scheduleAtFixedRate(cleanup, 1, 10, TimeUnit.MINUTES);
 	}
 
 	@Override
 	public String transcribe(Resource audio) {
 		var transcriptionForResource = new File(this.root, UUID.randomUUID().toString());
+		var parentFile = transcriptionForResource.getParentFile();
+		Assert.state(parentFile.exists() || parentFile.mkdirs(),
+		"the directory into which we're writing this file [" + parentFile.getAbsolutePath() + "] does not " +
+				"exist, and could not be created."); 
+		
 		try {
 			var orderedAudio = this.divide(transcriptionForResource, audio)//
 				.map(tr -> (Callable<String>) () -> this.openAiAudioTranscriptionModel.call(tr.audio()))//
@@ -84,15 +90,13 @@ class ChunkingTranscriptionService implements TranscriptionService {
 			FileSystemUtils.deleteRecursively(file);
 		}
 	}
-
 	private class TranscriptionFileCleanupRunnable implements Runnable {
 
-		private final Logger log = LoggerFactory.getLogger(getClass());
 
 		@Override
 		public void run() {
 			var key = futureInstant(0);
-			this.log.debug("the current hour instant is {}", key.toString());
+			log.debug("the current hour instant is {}", key.toString());
 			for (var file : filesToDelete.getOrDefault(key, new HashSet<>())) {
 				delete(file);
 			}
@@ -108,40 +112,42 @@ class ChunkingTranscriptionService implements TranscriptionService {
 	}
 
 	private void enqueueForDeletion(File file) {
-		this.filesToDelete.computeIfAbsent(futureInstant(5), k -> new HashSet<>()).add(file);
+		var futureInstant = futureInstant(5);
+		this.filesToDelete.computeIfAbsent(futureInstant, k -> new HashSet<>()).add(file);
+		this.log.debug("enqueued {} for deletion at {}", file.getAbsolutePath(), futureInstant.toString());
 	}
 
 	private Stream<TranscriptionSegment> divide(File transcriptionForResource, Resource audio) throws Exception {
 
-		Assert.state(audio != null && audio.exists() && audio.contentLength() > 0 && audio.isFile(),
-				"the file must be a valid file");
+		// make sure we have the file locally 
+		var originalAudio = new File(transcriptionForResource, "audio.mp3");
+		Assert.state(transcriptionForResource.mkdirs(), "the directory [" + transcriptionForResource.getAbsolutePath() + "] has not been created");
+		FileCopyUtils.copy(audio.getInputStream(), new FileOutputStream(originalAudio));
+		
+		this.enqueueForDeletion(transcriptionForResource);
 
+		var duration = this.durationFor(originalAudio);
+		var sizeInBytes = originalAudio.length();
+		
 		// special case if the file is small enough
-		if (audio.contentLength() < this.maxFileSize)
-			return Stream.of(new TranscriptionSegment(audio, 0, 0, durationFor(audio.getFile()).toMillis()));
+		if (originalAudio.length() < this.maxFileSize) {
+			this.log.debug("the content length is less than the max file size, so returning a single segment batch.");
+			return Stream.of(new TranscriptionSegment( new FileSystemResource(originalAudio), 0, 0, duration.toMillis()));
+		}
 
 		// 1. find duration/size of the file
 		// 2. find gaps/silence in the audio file.
 		// 3. find the gap in the file nearest to the appropriate divided timecode
 		// 4. divide the file into 20mb chunks.
 
-		this.enqueueForDeletion(transcriptionForResource);
 
-		var originalAudio = new File(transcriptionForResource, "audio.mp3");
-		Assert.state(transcriptionForResource.mkdirs(),
-				"the directory [" + transcriptionForResource.getAbsolutePath() + "] has not been created");
-		FileCopyUtils.copy(audio.getInputStream(), new FileOutputStream(originalAudio));
-
-		// 1. find duration/size of the file
-		var sizeInMb = audio.contentLength();
-		var duration = this.durationFor(originalAudio);
 
 		// 2. find gaps/silence in the audio file.
 		var silentGapsInAudio = SilenceDetector.detect(originalAudio);
 
 		// 3. find the gap in the file nearest to the appropriate divided timecode
-		var parts = (int) (sizeInMb <= this.maxFileSize ? 1 : sizeInMb / this.maxFileSize);
-		if (sizeInMb % this.maxFileSize != 0) {
+		var parts = (int) (sizeInBytes <= this.maxFileSize ? 1 : sizeInBytes / this.maxFileSize);
+		if (sizeInBytes % this.maxFileSize != 0) {
 			parts += 1;
 		}
 

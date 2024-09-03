@@ -63,6 +63,8 @@ class TranscriptionConfiguration {
 					return new TranscriptionReply(key, subject, transcriptionReply, null);
 				} //
 				catch (Throwable throwable) {
+					this.log.error( "got an exception when trying to provide a transcript {}" ,
+							throwable.getMessage() ,throwable);
 					return new TranscriptionReply(key, subject, null,
 							new TranscriptionReply.Error(throwable.getMessage()));
 				}
