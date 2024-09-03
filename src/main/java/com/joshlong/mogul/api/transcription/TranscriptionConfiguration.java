@@ -100,7 +100,7 @@ class TranscriptionConfiguration {
 
 }
 
-record TranscriptionSegment(Resource audio, int order, String start, String stop) {
+record TranscriptionSegment(Resource audio, int order, long startInMilliseconds, long stopInMilliseconds) {
 }
 
 record TranscriptionBatch(List<TranscriptionSegment> segments) {
