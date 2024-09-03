@@ -120,7 +120,7 @@ class DefaultMogulService implements MogulService {
 			msg.append(", cache missed, resolving by db query [").append(mogulId).append("]");
 			return mogul;
 		});
-		if (this. log.isTraceEnabled())
+		if (this.log.isTraceEnabled())
 			this.log.trace(msg.toString());
 		return res;
 	}
@@ -141,7 +141,7 @@ class DefaultMogulService implements MogulService {
 			return mogul;
 		});
 		if (log.isTraceEnabled())
-			log.trace( msg.toString());
+			log.trace(msg.toString());
 		return res;
 	}
 
