@@ -4,10 +4,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.openai.OpenAiAudioTranscriptionModel;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.Resource;
 import org.springframework.integration.channel.DirectChannel;
 import org.springframework.integration.core.GenericHandler;
 import org.springframework.integration.dsl.DirectChannelSpec;
@@ -16,14 +16,12 @@ import org.springframework.integration.dsl.MessageChannelSpec;
 import org.springframework.integration.dsl.MessageChannels;
 import org.springframework.messaging.MessageChannel;
 
-import java.io.*;
-import java.util.List;
-
 // todo figure out failure modes?
 // - what if the reply comes back and the segment has been deleted?
 // - what if there's an error in transcription? retry? durable requests?
 // - how may requests can we handle at the same time? what's concurrence lok like? is this a job for `JobScheduler`?
 
+@EnableConfigurationProperties(TranscriptionProperties.class)
 @Configuration
 class TranscriptionConfiguration {
 
@@ -57,10 +55,9 @@ class TranscriptionConfiguration {
 	// that then gets set on the episode in aggregate.
 
 	@Bean
-	IntegrationFlow transcriptionRequestsIntegrationFlow(
+	IntegrationFlow transcriptionRequestsIntegrationFlow(TranscriptionClient transcriptionClient,
 			@Qualifier(TRANSCRIPTION_REQUESTS_CHANNEL) MessageChannel requests,
-			@Qualifier(TRANSCRIPTION_REPLIES_CHANNEL) MessageChannel replies,
-			OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel) {
+			@Qualifier(TRANSCRIPTION_REPLIES_CHANNEL) MessageChannel replies) {
 		return IntegrationFlow//
 			.from(requests)//
 			.transform((GenericHandler<TranscriptionRequest>) (payload, headers) -> {
@@ -71,7 +68,7 @@ class TranscriptionConfiguration {
 				var key = transcribable.transcriptionKey();
 				try {
 					this.log.debug("about to perform transcription using OpenAI for transcribable with key {}", key);
-					var transcriptionReply = openAiAudioTranscriptionModel.call(resource);
+					var transcriptionReply = transcriptionClient.transcribe(resource);
 					return new TranscriptionReply(key, subject, transcriptionReply, null);
 				} //
 				catch (Throwable throwable) {
@@ -98,17 +95,10 @@ class TranscriptionConfiguration {
 			.get();
 	}
 
-}
-
-record TranscriptionSegment(Resource audio, int order, long startInMilliseconds, long stopInMilliseconds) {
-}
-
-record TranscriptionBatch(List<TranscriptionSegment> segments) {
-}
-
-record TranscriptionReply(Serializable key, Class<?> subject, String transcript, Error error) {
-
-	record Error(String details) {
+	@Bean
+	ChunkingTranscriptionClient chunkingTranscriptionClient(TranscriptionProperties transcriptionProperties,
+			OpenAiAudioTranscriptionModel transcriptionModel) {
+		return new ChunkingTranscriptionClient(transcriptionModel, transcriptionProperties.root(), (10 * 1024 * 1024));
 	}
 
 }
