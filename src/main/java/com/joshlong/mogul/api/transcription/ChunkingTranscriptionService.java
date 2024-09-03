@@ -7,6 +7,7 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
+import org.springframework.util.FileSystemUtils;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -14,21 +15,22 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.text.NumberFormat;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.*;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-class ChunkingTranscriptionClient implements TranscriptionClient {
+class ChunkingTranscriptionService implements TranscriptionService {
 
 	private static final ThreadLocal<NumberFormat> NUMBER_FORMAT = new ThreadLocal<>();
 
 	private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
+	private final Map<Instant, Set<File>> filesToDelete = new ConcurrentHashMap<>();
 
 	private final OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel;
 
@@ -36,7 +38,7 @@ class ChunkingTranscriptionClient implements TranscriptionClient {
 
 	private final long maxFileSize;
 
-	ChunkingTranscriptionClient(OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel, File root,
+	ChunkingTranscriptionService(OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel, File root,
 			long maxFileSizeInBytes) {
 		this.openAiAudioTranscriptionModel = openAiAudioTranscriptionModel;
 		this.root = root;
@@ -46,9 +48,70 @@ class ChunkingTranscriptionClient implements TranscriptionClient {
 		Assert.state(this.maxFileSize > 0, "the max file size must be greater than zero");
 		Assert.state(this.root.exists() || this.root.mkdirs(),
 				"the root for transcription, " + this.root.getAbsolutePath() + ", could not be created");
+		var cleanup = new TranscriptionFileCleanupRunnable();
+
+		Executors.newScheduledThreadPool(1).scheduleAtFixedRate(cleanup, 1, 10, TimeUnit.MINUTES);
 	}
 
-	private Stream<TranscriptionSegment> divide(Resource audio) throws Exception {
+	@Override
+	public String transcribe(Resource audio) {
+		var transcriptionForResource = new File(this.root, UUID.randomUUID().toString());
+		try {
+			var orderedAudio = this.divide(transcriptionForResource, audio)//
+				.map(tr -> (Callable<String>) () -> this.openAiAudioTranscriptionModel.call(tr.audio()))//
+				.toList();
+			return this.executor//
+				.invokeAll(orderedAudio)//
+				.stream()//
+				.map(ChunkingTranscriptionService::from)//
+				.collect(Collectors.joining());
+		} //
+		catch (Exception e) {
+			throw new RuntimeException(e);
+		} //
+		finally {
+			delete(transcriptionForResource);
+		}
+	}
+
+	private static void delete(File file) {
+		if (file != null) {
+			if (file.isFile()) {
+				file.delete();
+			}
+		} //
+		else {
+			FileSystemUtils.deleteRecursively(file);
+		}
+	}
+
+	private class TranscriptionFileCleanupRunnable implements Runnable {
+
+		private final Logger log = LoggerFactory.getLogger(getClass());
+
+		@Override
+		public void run() {
+			var key = futureInstant(0);
+			this.log.debug("the current hour instant is {}", key.toString());
+			for (var file : filesToDelete.getOrDefault(key, new HashSet<>())) {
+				delete(file);
+			}
+		}
+
+	}
+
+	private Instant futureInstant(int hour) {
+		var now = ZonedDateTime.now(ZoneId.systemDefault());
+		var fiveHoursFromNow = now.plusHours(hour);
+		var topOfTheHour = fiveHoursFromNow.withMinute(0).withSecond(0).withNano(0);
+		return topOfTheHour.toInstant();
+	}
+
+	private void enqueueForDeletion(File file) {
+		this.filesToDelete.computeIfAbsent(futureInstant(5), k -> new HashSet<>()).add(file);
+	}
+
+	private Stream<TranscriptionSegment> divide(File transcriptionForResource, Resource audio) throws Exception {
 
 		Assert.state(audio != null && audio.exists() && audio.contentLength() > 0 && audio.isFile(),
 				"the file must be a valid file");
@@ -62,7 +125,8 @@ class ChunkingTranscriptionClient implements TranscriptionClient {
 		// 3. find the gap in the file nearest to the appropriate divided timecode
 		// 4. divide the file into 20mb chunks.
 
-		var transcriptionForResource = new File(this.root, UUID.randomUUID().toString());
+		this.enqueueForDeletion(transcriptionForResource);
+
 		var originalAudio = new File(transcriptionForResource, "audio.mp3");
 		Assert.state(transcriptionForResource.mkdirs(),
 				"the directory [" + transcriptionForResource.getAbsolutePath() + "] has not been created");
@@ -176,23 +240,6 @@ class ChunkingTranscriptionClient implements TranscriptionClient {
 		}
 	}
 
-	@Override
-	public String transcribe(Resource audio) {
-		try {
-			var orderedAudio = this.divide(audio)//
-				.map(tr -> (Callable<String>) () -> this.openAiAudioTranscriptionModel.call(tr.audio()))//
-				.toList();
-			return this.executor//
-				.invokeAll(orderedAudio)//
-				.stream()//
-				.map(ChunkingTranscriptionClient::from)//
-				.collect(Collectors.joining());
-		} //
-		catch (Exception e) {
-			throw new RuntimeException(e);
-		}
-	}
-
 	private Duration durationFor(File originalAudio) throws Exception {
 		var durationOfFileExecution = Runtime.getRuntime()
 			.exec(new String[] { "ffmpeg", "-i", originalAudio.getAbsolutePath() });
@@ -236,72 +283,6 @@ class ChunkingTranscriptionClient implements TranscriptionClient {
 			}
 		}
 		return closestSilence;
-	}
-
-}
-
-abstract class SilenceDetector {
-
-	public record Silence(float start, float end, float duration) {
-	}
-
-	private static final Map<String, Pattern> PATTERNS = new ConcurrentHashMap<>();
-
-	public static Silence[] detect(File audio) throws Exception {
-		var silence = new File(audio.getParentFile(), "silence");
-		var result = new ProcessBuilder()
-			.command("ffmpeg", "-i", audio.getAbsolutePath(), "-af", "silencedetect=noise=-30dB:d=0.5", "-f", "null",
-					silence.getAbsolutePath())
-			.inheritIO()
-			.redirectOutput(ProcessBuilder.Redirect.PIPE)
-			.redirectError(ProcessBuilder.Redirect.PIPE)
-			.start();
-		Assert.state(result.waitFor() == 0, "the result of silence detection should be 0, or good.");
-		try (var output = new InputStreamReader(result.getErrorStream())) {
-			var content = FileCopyUtils.copyToString(output);
-			var silenceDetectionLogLines = Stream.of(content.split(System.lineSeparator()))
-				.filter(l -> l.contains("silencedetect"))
-				.map(l -> l.split("]")[1])
-				.toList();
-			var silences = new ArrayList<Silence>();
-			var offset = 0;
-
-			// to be reused
-			var start = 0f;
-			var stop = 0f;
-			var duration = 0f;
-
-			// look for and parse lines that look like this:
-			// [silencedetect @ 0x600000410000] silence_start: 18.671708
-			// [silencedetect @ 0x600000410000] silence_end: 19.178 | silence_duration:
-			for (var silenceDetectionLogLine : silenceDetectionLogLines) {
-				if (offset % 2 == 0) {
-					start = 1000 * Float.parseFloat(numberFor("silence_start", silenceDetectionLogLine));
-				} //
-				else {
-					var pikeCharIndex = silenceDetectionLogLine.indexOf("|");
-					Assert.state(pikeCharIndex != -1, "the '|' character was not found");
-					var before = silenceDetectionLogLine.substring(0, pikeCharIndex);
-					var after = silenceDetectionLogLine.substring(1 + pikeCharIndex);
-					stop = 1000 * Float.parseFloat(numberFor("silence_end", before));
-					duration = 1000 * Float.parseFloat(numberFor("silence_duration", after));
-					silences.add(new Silence(start, stop, duration));
-				}
-				offset += 1;
-			}
-			return silences.toArray(new Silence[0]);
-		}
-	}
-
-	private static String numberFor(String prefix, String line) {
-		var regex = """
-				    (?<=XXXX:\\s)\\d+(\\.\\d+)?
-				""".trim().replace("XXXX", prefix);
-		var pattern = PATTERNS.computeIfAbsent(regex, r -> Pattern.compile(regex));
-		var matcher = pattern.matcher(line);
-		if (matcher.find())
-			return matcher.group();
-		throw new IllegalArgumentException("line [" + line + "] does not match pattern [" + pattern.pattern() + "]");
 	}
 
 }

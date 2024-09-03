@@ -16,35 +16,26 @@ import org.springframework.integration.dsl.MessageChannelSpec;
 import org.springframework.integration.dsl.MessageChannels;
 import org.springframework.messaging.MessageChannel;
 
+import static com.joshlong.mogul.api.transcription.TranscriptionIntegrationConfiguration.TRANSCRIPTION_REPLIES_CHANNEL;
+import static com.joshlong.mogul.api.transcription.TranscriptionIntegrationConfiguration.TRANSCRIPTION_REQUESTS_CHANNEL;
+
 // todo figure out failure modes?
 // - what if the reply comes back and the segment has been deleted?
 // - what if there's an error in transcription? retry? durable requests?
 // - how may requests can we handle at the same time? what's concurrence lok like? is this a job for `JobScheduler`?
 
-@EnableConfigurationProperties(TranscriptionProperties.class)
 @Configuration
+@EnableConfigurationProperties(TranscriptionProperties.class)
 class TranscriptionConfiguration {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
-	private static final String TRANSCRIPTION_REQUESTS_CHANNEL = "transcriptionRequestsMessageChannel";
+	private final MessageChannel requests, replies;
 
-	private static final String TRANSCRIPTION_REPLIES_CHANNEL = "transcriptionRepliesMessageChannel";
-
-	@Bean
-	DefaultTranscriptionService transcriptionService(
-			@Qualifier(TRANSCRIPTION_REQUESTS_CHANNEL) MessageChannel requests) {
-		return new DefaultTranscriptionService(requests);
-	}
-
-	@Bean(name = TRANSCRIPTION_REPLIES_CHANNEL)
-	MessageChannelSpec<DirectChannelSpec, DirectChannel> transcriptionReplies() {
-		return MessageChannels.direct();
-	}
-
-	@Bean(name = TRANSCRIPTION_REQUESTS_CHANNEL)
-	MessageChannelSpec<DirectChannelSpec, DirectChannel> transcriptionRequests() {
-		return MessageChannels.direct();
+	TranscriptionConfiguration(@Qualifier(TRANSCRIPTION_REQUESTS_CHANNEL) MessageChannel requests,
+			@Qualifier(TRANSCRIPTION_REPLIES_CHANNEL) MessageChannel replies) {
+		this.replies = replies;
+		this.requests = requests;
 	}
 
 	// spring integration can do this.
@@ -54,21 +45,21 @@ class TranscriptionConfiguration {
 	// to assemble a full transcript
 	// that then gets set on the episode in aggregate.
 
+	// todo rewrite this so that all requests are first delivered
+	// to RabbitMQ so that they get redelivered if something should go wrong.
+
 	@Bean
-	IntegrationFlow transcriptionRequestsIntegrationFlow(TranscriptionClient transcriptionClient,
-			@Qualifier(TRANSCRIPTION_REQUESTS_CHANNEL) MessageChannel requests,
-			@Qualifier(TRANSCRIPTION_REPLIES_CHANNEL) MessageChannel replies) {
+	IntegrationFlow transcriptionRequestsIntegrationFlow(TranscriptionService transcriptionService) {
 		return IntegrationFlow//
-			.from(requests)//
+			.from(this.requests)//
 			.transform((GenericHandler<TranscriptionRequest>) (payload, headers) -> {
-				this.log.debug("got a transcription request for [{}]", payload);
+				this.log.info("got a transcription request for [{}]", payload);
 				var transcribable = payload.transcribable();
 				var resource = transcribable.audio();
 				var subject = transcribable.subject();
 				var key = transcribable.transcriptionKey();
 				try {
-					this.log.debug("about to perform transcription using OpenAI for transcribable with key {}", key);
-					var transcriptionReply = transcriptionClient.transcribe(resource);
+					var transcriptionReply = transcriptionService.transcribe(resource);
 					return new TranscriptionReply(key, subject, transcriptionReply, null);
 				} //
 				catch (Throwable throwable) {
@@ -76,15 +67,14 @@ class TranscriptionConfiguration {
 							new TranscriptionReply.Error(throwable.getMessage()));
 				}
 			})//
-			.channel(replies)
+			.channel(this.replies)
 			.get();
 	}
 
 	@Bean
-	IntegrationFlow transcriptionRepliesIntegrationFlow(ApplicationEventPublisher publisher,
-			@Qualifier(TRANSCRIPTION_REPLIES_CHANNEL) MessageChannel replies) {
+	IntegrationFlow transcriptionRepliesIntegrationFlow(ApplicationEventPublisher publisher) {
 		return IntegrationFlow //
-			.from(replies) //
+			.from(this.replies) //
 			.handle((GenericHandler<TranscriptionReply>) (payload, headers) -> { //
 				// todo use the spring integration event adapter?
 				var transcriptionProcessedEvent = new TranscriptionProcessedEvent(payload.key(), payload.transcript(),
@@ -96,9 +86,33 @@ class TranscriptionConfiguration {
 	}
 
 	@Bean
-	ChunkingTranscriptionClient chunkingTranscriptionClient(TranscriptionProperties transcriptionProperties,
+	ChunkingTranscriptionService chunkingTranscriptionService(TranscriptionProperties transcriptionProperties,
 			OpenAiAudioTranscriptionModel transcriptionModel) {
-		return new ChunkingTranscriptionClient(transcriptionModel, transcriptionProperties.root(), (10 * 1024 * 1024));
+		return new ChunkingTranscriptionService(transcriptionModel, transcriptionProperties.root(), (10 * 1024 * 1024));
+	}
+
+	@Bean
+	DefaultTranscriptionClient defaultTranscriptionClient() {
+		return new DefaultTranscriptionClient(requests);
+	}
+
+}
+
+@Configuration
+class TranscriptionIntegrationConfiguration {
+
+	static final String TRANSCRIPTION_REQUESTS_CHANNEL = "transcriptionRequestsMessageChannel";
+
+	static final String TRANSCRIPTION_REPLIES_CHANNEL = "transcriptionRepliesMessageChannel";
+
+	@Bean(name = TRANSCRIPTION_REPLIES_CHANNEL)
+	MessageChannelSpec<DirectChannelSpec, DirectChannel> transcriptionRepliesMessageChannel() {
+		return MessageChannels.direct();
+	}
+
+	@Bean(name = TRANSCRIPTION_REQUESTS_CHANNEL)
+	MessageChannelSpec<DirectChannelSpec, DirectChannel> transcriptionRequestsMessageChannel() {
+		return MessageChannels.direct();
 	}
 
 }

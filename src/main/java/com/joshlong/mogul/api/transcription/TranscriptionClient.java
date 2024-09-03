@@ -1,9 +1,9 @@
 package com.joshlong.mogul.api.transcription;
 
-import org.springframework.core.io.Resource;
+import com.joshlong.mogul.api.Transcribable;
 
-interface TranscriptionClient {
+public interface TranscriptionClient {
 
-	String transcribe(Resource audio);
+	void startTranscription(Transcribable transcribable);
 
 }

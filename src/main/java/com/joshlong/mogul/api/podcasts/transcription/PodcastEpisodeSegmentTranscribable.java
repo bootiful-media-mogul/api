@@ -6,7 +6,7 @@ import com.joshlong.mogul.api.podcasts.PodcastEpisodeCompletionEvent;
 import com.joshlong.mogul.api.podcasts.PodcastService;
 import com.joshlong.mogul.api.podcasts.Segment;
 import com.joshlong.mogul.api.transcription.TranscriptionProcessedEvent;
-import com.joshlong.mogul.api.transcription.TranscriptionService;
+import com.joshlong.mogul.api.transcription.TranscriptionClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -63,14 +63,14 @@ class PodcastEpisodeSegmentTranscriptionProcessedEventListener {
 
 	private final PodcastService podcastService;
 
-	private final TranscriptionService transcriptionService;
+	private final TranscriptionClient transcriptionClient;
 
 	private final ManagedFileService managedFileService;
 
 	PodcastEpisodeSegmentTranscriptionProcessedEventListener(PodcastService podcastService,
-			TranscriptionService transcriptionService, ManagedFileService managedFileService) {
+			TranscriptionClient transcriptionClient, ManagedFileService managedFileService) {
 		this.podcastService = podcastService;
-		this.transcriptionService = transcriptionService;
+		this.transcriptionClient = transcriptionClient;
 		this.managedFileService = managedFileService;
 	}
 
@@ -80,8 +80,8 @@ class PodcastEpisodeSegmentTranscriptionProcessedEventListener {
 			for (var seg : pce.episode().segments()) {
 				// transcription is expensive so let's not do it unnecessarily
 				if (seg.transcribable() && !StringUtils.hasText(seg.transcript())) {
-					this.transcriptionService
-						.requestTranscription(new PodcastEpisodeSegmentTranscribable(seg, this.managedFileService));
+					this.transcriptionClient
+						.startTranscription(new PodcastEpisodeSegmentTranscribable(seg, this.managedFileService));
 				}
 			}
 		}
