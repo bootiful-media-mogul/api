@@ -41,16 +41,4 @@ public abstract class CommonMediaTypes {
 
 	public static final MediaType MP3 = MediaType.parseMediaType("audio/mpeg");
 
-	//
-	/*
-	 * public static boolean isAudio(MediaType mediaType) { return
-	 * mediaType.includes(MediaType.valueOf("audio")); }
-	 *
-	 * public static boolean isVideo(MediaType mediaType) { return
-	 * mediaType.includes(MediaType.valueOf("video")); }
-	 *
-	 * public static boolean isImage(MediaType mediaType) { return
-	 * mediaType.includes(MediaType.valueOf("image")); }
-	 */
-
 }

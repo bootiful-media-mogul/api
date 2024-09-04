@@ -2,9 +2,8 @@ package com.joshlong.mogul.api.ai;
 
 import org.springframework.core.io.Resource;
 
+// todo could we fold the transcription stuff into this?
 public interface AiClient {
-
-	String transcribe(Resource audio);
 
 	String chat(String prompt);
 

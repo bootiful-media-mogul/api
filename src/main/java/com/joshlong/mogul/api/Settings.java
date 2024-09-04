@@ -55,7 +55,7 @@ public class Settings {
 
 	public Map<String, Setting> getAllSettingsByCategory(Long mogulId, String category) {
 		var settings = this.db//
-			.sql(" select * from settings where mogul_id = ? and category = ? ")
+			.sql(" select * from settings where mogul = ? and category = ? ")
 			.params(mogulId, category)
 			.query(this.rowMapper)
 			.list();
@@ -67,7 +67,7 @@ public class Settings {
 
 	private Setting get(Long mogulId, String category, String key) {
 		var settings = this.db//
-			.sql("select * from settings where mogul_id = ? and category =? and key = ? ")
+			.sql("select * from settings where mogul  = ? and category =? and key = ? ")
 			.params(mogulId, category, key)
 			.query(this.rowMapper)
 			.list();
@@ -84,7 +84,7 @@ public class Settings {
 
 	public void set(Long mogulId, String category, String key, String value) {
 		this.db.sql("""
-				insert into settings(mogul_id, category, key, value)
+				insert into settings(mogul , category, key, value)
 				values (? ,? ,? ,? )
 				on conflict on constraint settings_mogul_id_category_key_key
 				 		do update set value = excluded.value

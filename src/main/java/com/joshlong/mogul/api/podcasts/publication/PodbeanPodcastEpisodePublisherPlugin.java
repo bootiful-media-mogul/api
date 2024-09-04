@@ -64,9 +64,7 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 
 	@Override
 	public boolean canPublish(Map<String, String> context, Episode payload) {
-		var cp = this.isConfigurationValid(context) && payload != null && payload.complete();
-
-		return cp;
+		return this.isConfigurationValid(context) && payload != null && payload.complete();
 	}
 
 	@Override
@@ -76,8 +74,8 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 
 	@Override
 	public void publish(Map<String, String> context, Episode payload) {
-		log.debug("publishing to podbean with context [{}] and payload [{}]. produced audio is [{}]", context, payload,
-				payload.producedAudio());
+		log.debug("publishing to podbean with context [{}] and payload [{}]." + " produced audio is [{}]", context,
+				payload, payload.producedAudio());
 		// todo some sort of thread local in which to stash the context
 		// to make it available to the multitenant TokenProvider
 

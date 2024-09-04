@@ -3,7 +3,6 @@ package com.joshlong.mogul.api.mogul;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
@@ -27,7 +26,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 @Service
-@RegisterReflectionForBinding(DefaultMogulService.MogulJwtAuthenticationTokenDetails.class)
 class DefaultMogulService implements MogulService {
 
 	private final String auth0Domain;
@@ -162,34 +160,10 @@ class DefaultMogulService implements MogulService {
 
 	}
 
-	///
-
 	@EventListener
 	void authenticationSuccessEvent(AuthenticationSuccessEvent ase) {
-
 		var authentication = (JwtAuthenticationToken) ase.getAuthentication();
-
 		this.login(authentication);
-	}
-
-	static class MogulJwtAuthenticationToken extends JwtAuthenticationToken {
-
-		private final MogulJwtAuthenticationTokenDetails details;
-
-		MogulJwtAuthenticationTokenDetails details() {
-			return details;
-		}
-
-		public MogulJwtAuthenticationToken(JwtAuthenticationToken delegate,
-				MogulJwtAuthenticationTokenDetails details) {
-			super(delegate.getToken(), delegate.getAuthorities(), delegate.getName());
-			this.details = details;
-		}
-
-	}
-
-	record MogulJwtAuthenticationTokenDetails(@JsonProperty("family_name") String familyName,
-			@JsonProperty("given_name") String givenName, String picture, String email) {
 	}
 
 }

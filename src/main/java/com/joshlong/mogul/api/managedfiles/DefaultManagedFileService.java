@@ -8,7 +8,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -108,7 +107,7 @@ class DefaultManagedFileService implements ManagedFileService {
 		this.log.debug("are we uploading on a virtual thread? {}", Thread.currentThread().isVirtual());
 		var freshManagedFile = this.forceReadManagedFile(managedFileId);
 		this.log.debug("managed file has been written? {}", freshManagedFile.written());
-		this.publisher.publishEvent(new ManagedFileUpdatedEvent(freshManagedFile));
+		this.publisher.publishEvent(new ManagedFileDeletedEvent(freshManagedFile));
 	}
 
 	/**
@@ -180,7 +179,7 @@ class DefaultManagedFileService implements ManagedFileService {
 		// lazily trigger the loading of the managed_file, which will be deleted if we
 		// waited unti after the next line
 		this.db.sql(
-				"insert into managed_file_deletion_request ( mogul_id, bucket, folder, filename ,storage_filename) values(?,?,?,?,?)")
+				"insert into managed_file_deletion_request ( mogul , bucket, folder, filename ,storage_filename) values(?,?,?,?,?)")
 			.params(managedFile.mogulId(), //
 					managedFile.bucket(), //
 					managedFile.folder(), //
@@ -215,7 +214,7 @@ class DefaultManagedFileService implements ManagedFileService {
 			MediaType mediaType) {
 		var kh = new GeneratedKeyHolder();
 		this.db.sql("""
-					insert into managed_file( storage_filename, mogul_id, bucket, folder, filename, size,content_type)
+					insert into managed_file( storage_filename, mogul , bucket, folder, filename, size,content_type)
 					VALUES (?,?,?,?,?,?,?)
 				""")
 			.params(UUID.randomUUID().toString(), mogulId, bucket, folder, fileName, size, mediaType.toString())
@@ -226,7 +225,7 @@ class DefaultManagedFileService implements ManagedFileService {
 
 	private void initializeManagedFile(ResultSet rs, ManagedFile managedFile) throws SQLException {
 
-		managedFile.hydrate(rs.getLong("mogul_id"), rs.getLong("id"), rs.getString("bucket"),
+		managedFile.hydrate(rs.getLong("mogul"), rs.getLong("id"), rs.getString("bucket"),
 				rs.getString("storage_filename"), rs.getString("folder"), rs.getString("filename"),
 				rs.getDate("created"), rs.getBoolean("written"), rs.getLong("size"), rs.getString("content_type"));
 	}
@@ -277,8 +276,8 @@ class DefaultManagedFileService implements ManagedFileService {
 				this.managedFiles.set(new ConcurrentSkipListMap<>());
 
 			// this allows any managed file that for whatever reason we're manipulating
-			// and
-			// <EM>not</EM> able to wait for the transaction to commit to hydrate its own
+			// and <EM>not</EM> able to wait for the transaction to commit to hydrate its
+			// own
 			// state in place.
 			var hydration = (Consumer<ManagedFile>) managedFile -> db.sql("select * from managed_file where id = ?")
 				.param(managedFileId)
@@ -302,17 +301,6 @@ class DefaultManagedFileService implements ManagedFileService {
 			return this.managedFiles.get().computeIfAbsent(managedFileId, mid -> new ManagedFile(mid, hydration)); //
 
 		});
-	}
-
-}
-
-class ManagedFileDeletionRequestRowMapper implements RowMapper<ManagedFileDeletionRequest> {
-
-	@Override
-	public ManagedFileDeletionRequest mapRow(ResultSet rs, int rowNum) throws SQLException {
-		return new ManagedFileDeletionRequest(rs.getLong("id"), rs.getLong("mogul_id"), rs.getString("bucket"),
-				rs.getString("folder"), rs.getString("filename"), rs.getString("storage_filename"),
-				rs.getBoolean("deleted"), rs.getDate("created"));
 	}
 
 }

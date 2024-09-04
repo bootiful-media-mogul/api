@@ -31,15 +31,15 @@ where id not in (select pid
                        select pe.produced_audio as pid
                        from podcast_episode pe
                        union
-                       select pes.produced_segment_audio_managed_file_id as pid
+                       select pes.produced_segment_audio_managed_file as pid
                        from podcast_episode pe,
                             podcast_episode_segment pes
-                       where pe.id = pes.podcast_episode_id
+                       where pe.id = pes.podcast_episode 
                        UNION
-                       select pes.segment_audio_managed_file_id as pid
+                       select pes.segment_audio_managed_file  as pid
                        from podcast_episode pe,
                             podcast_episode_segment pes
-                       where pe.id = pes.podcast_episode_id)
+                       where pe.id = pes.podcast_episode )
                  order by pid);
 
 ```

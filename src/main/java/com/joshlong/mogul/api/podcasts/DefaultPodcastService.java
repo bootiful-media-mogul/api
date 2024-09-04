@@ -72,7 +72,7 @@ class DefaultPodcastService implements PodcastService {
 		Assert.state(!episodes.isEmpty(), "there are no episode segments");
 		var idsAsString = episodes.stream().map(e -> Long.toString(e)).collect(Collectors.joining(", "));
 		var segments = db
-			.sql("select * from podcast_episode_segment pes where pes.podcast_episode_id in (" + idsAsString + ") ")
+			.sql("select * from podcast_episode_segment pes where pes.podcast_episode  in (" + idsAsString + ") ")
 			.query(this.episodeSegmentRowMapper)
 			.list();
 		var episodeToSegmentsMap = new HashMap<Long, List<Segment>>();
@@ -86,7 +86,7 @@ class DefaultPodcastService implements PodcastService {
 	@Override
 	public List<Segment> getPodcastEpisodeSegmentsByEpisode(Long episodeId) {
 		this.log.debug("trying to resolve episode segments for episode #{} from the DB", episodeId);
-		var sql = " select * from podcast_episode_segment where podcast_episode_id = ? order by sequence_number ASC ";
+		var sql = " select * from podcast_episode_segment where podcast_episode  = ? order by sequence_number ASC ";
 		var episodeSegmentsFromDb = this.db //
 			.sql(sql) //
 			.params(episodeId) //
@@ -108,9 +108,9 @@ class DefaultPodcastService implements PodcastService {
 				managedFileUpdatedEvent.managedFile().contentType());
 
 		var sql = """
-				select pes.podcast_episode_id as id
+				select pes.podcast_episode  as id
 				from podcast_episode_segment pes
-				where pes.segment_audio_managed_file_id = ?
+				where pes.segment_audio_managed_file  = ?
 				UNION
 				select pe.id as id
 				from podcast_episode pe
@@ -122,10 +122,6 @@ class DefaultPodcastService implements PodcastService {
 			return;
 
 		var episodeId = all.iterator().next();
-		// var mogul =
-		// getPodcastById(this.getEpisodeById(episodeId).podcastId()).mogulId();
-		// this.podcasts.remove(mogul);
-
 		var episode = this.getPodcastEpisodeById(episodeId);
 		var segments = this.getPodcastEpisodeSegmentsByEpisode(episodeId);
 
@@ -216,7 +212,7 @@ class DefaultPodcastService implements PodcastService {
 		var episodeRowMapper = new EpisodeRowMapper(this.managedFileService::getManagedFile,
 				episodeId -> new ArrayList<>());
 		var eps = this.db//
-			.sql(" select * from podcast_episode pe where pe.podcast_id = ? ") //
+			.sql(" select * from podcast_episode pe where pe.podcast  = ? ") //
 			.param(podcastId)//
 			.query(episodeRowMapper)//
 			.list();
@@ -260,7 +256,7 @@ class DefaultPodcastService implements PodcastService {
 		var kh = new GeneratedKeyHolder();
 		this.db.sql("""
 					insert into podcast_episode(
-						podcast_id,
+								podcast ,
 						title,
 						description,
 						graphic ,
@@ -390,7 +386,7 @@ class DefaultPodcastService implements PodcastService {
 			func.accept(segment.producedAudio(), ids);
 		}
 
-		this.db.sql("delete from podcast_episode_segment where podcast_episode_id = ?").param(episode.id()).update();
+		this.db.sql("delete from podcast_episode_segment where podcast_episode  = ?").param(episode.id()).update();
 		this.db.sql("delete from podcast_episode where id = ?").param(episode.id()).update();
 
 		for (var managedFileId : ids)
@@ -410,7 +406,7 @@ class DefaultPodcastService implements PodcastService {
 	@Override
 	public Segment createPodcastEpisodeSegment(Long mogulId, Long episodeId, String name, long crossfade) {
 		var maxOrder = (this.db
-			.sql("select max( sequence_number) from podcast_episode_segment where podcast_episode_id = ? ")
+			.sql("select max( sequence_number) from podcast_episode_segment where podcast_episode  = ? ")
 			.params(episodeId)
 			.query(Number.class)
 			.optional()
@@ -421,9 +417,9 @@ class DefaultPodcastService implements PodcastService {
 		this.mogulService.assertAuthorizedMogul(mogulId);
 		var sql = """
 					insert into podcast_episode_segment (
-						podcast_episode_id,
-						segment_audio_managed_file_id,
-						produced_segment_audio_managed_file_id,
+						podcast_episode,
+						segment_audio_managed_file ,
+						produced_segment_audio_managed_file ,
 						cross_fade_duration,
 						name,
 						sequence_number
@@ -529,14 +525,13 @@ class DefaultPodcastService implements PodcastService {
 	public Collection<Episode> getAllPodcastEpisodesByIds(List<Long> episodeIds) {
 		var episodesToSegments = this.getPodcastEpisodeSegmentsByEpisodes(episodeIds);
 		var ids = episodeIds.stream().map(e -> Long.toString(e)).collect(Collectors.joining(","));
-		return db.sql("select * from podcast_episode pe where pe.id in ( " + ids + " )")
+		return this.db.sql("select * from podcast_episode pe where pe.id in ( " + ids + " )")
 			.query(new EpisodeRowMapper(managedFileService::getManagedFile, episodesToSegments::get))
 			.list();
 	}
 
 	@EventListener
 	void podcastDeletedEventNotifyingListener(PodcastDeletedEvent event) {
-		this.log.debug("podcastDeletedEventNotifyingListener");
 		var notificationEvent = NotificationEvent.notificationEventFor(event.podcast().mogulId(), event,
 				Long.toString(event.podcast().id()), event.podcast().title(), false, true);
 		NotificationEvents.notify(notificationEvent);
@@ -544,7 +539,6 @@ class DefaultPodcastService implements PodcastService {
 
 	@EventListener
 	void podcastCreatedEventNotifyingListener(PodcastCreatedEvent event) {
-		this.log.debug("podcastCreatedEventNotifyingListener");
 		var notificationEvent = NotificationEvent.notificationEventFor(event.podcast().mogulId(), event,
 				Long.toString(event.podcast().id()), event.podcast().title(), false, true);
 		NotificationEvents.notify(notificationEvent);
@@ -553,7 +547,7 @@ class DefaultPodcastService implements PodcastService {
 	@Override
 	public Collection<Podcast> getAllPodcastsByMogul(Long mogulId) {
 		var pds = this.db //
-			.sql("select * from podcast p where p.mogul_id = ?")//
+			.sql("select * from podcast p where p.mogul = ?")//
 			.param(mogulId)//
 			.query(this.podcastRowMapper)//
 			.list();

@@ -1,8 +1,8 @@
 package com.joshlong.mogul.api.settings;
 
+import com.joshlong.mogul.api.PublisherPlugin;
 import com.joshlong.mogul.api.Settings;
 import com.joshlong.mogul.api.mogul.MogulService;
-import com.joshlong.mogul.api.PublisherPlugin;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;

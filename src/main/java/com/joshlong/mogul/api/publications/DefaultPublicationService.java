@@ -24,6 +24,9 @@ import org.springframework.util.Assert;
 import java.io.Serializable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 import static com.joshlong.mogul.api.PublisherPlugin.CONTEXT_URL;
@@ -32,7 +35,10 @@ import static com.joshlong.mogul.api.PublisherPlugin.CONTEXT_URL;
 class DefaultPublicationService implements PublicationService {
 
 	public record SettingsLookup(Long mogulId, String category) {
+
 	}
+
+	private final ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -119,7 +125,7 @@ class DefaultPublicationService implements PublicationService {
 			var entityClazz = payload.getClass().getName();
 			var kh = new GeneratedKeyHolder();
 			this.db.sql(
-					"insert into publication( state, mogul_id, plugin, created, published, context, payload , payload_class) VALUES (?,?,?,?,?,?,?,?)")
+					"insert into publication( state, mogul, plugin, created, published, context, payload , payload_class) VALUES (?,?,?,?,?,?,?,?)")
 				.params(Publication.State.DRAFT.name(), mogulId, plugin.name(), new Date(), null, contextJson,
 						publicationData, entityClazz)
 				.update(kh);
@@ -192,26 +198,23 @@ class DefaultPublicationService implements PublicationService {
 		return c.getName() + ":" + s.toString();
 	}
 
-	// todo cache the publications
 	@Override
 	public Collection<Publication> getPublicationsByPublicationKeyAndClass(Serializable publicationKey,
 			Class<?> clazz) {
 		var key = key(clazz, publicationKey);
 		if (this.publicationsCache.containsKey(key)) {
-			var list = this.publicationsCache.get(key)
+			return this.publicationsCache//
+				.get(key)//
 				.stream()//
 				.sorted(Comparator.comparing(Publication::created).reversed())//
 				.toList();
-			log.debug("list of publications {} for key {}", list.size(), key);
-			return list;
 		}
-
 		return List.of();
 	}
 
 	@EventListener(ApplicationReadyEvent.class)
 	void applicationReady() {
-		this.refreshCache();
+		this.scheduledExecutorService.schedule(this::refreshCache, 1, TimeUnit.MINUTES);
 	}
 
 	@EventListener(PublicationUpdatedEvent.class)

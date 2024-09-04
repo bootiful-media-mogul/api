@@ -73,7 +73,6 @@ create table if not exists publication
 );
 create index if not exists publication_payload_index on publication (payload);
 
---
 
 
 create table if not exists podcast_episode

@@ -1,0 +1,1 @@
+alter table podcast_episode rename column podcast_id to podcast;

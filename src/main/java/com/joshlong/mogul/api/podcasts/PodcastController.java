@@ -62,22 +62,6 @@ class PodcastController {
 			this.log.debug("good news! there are " + "publications for episode {}", episodeKeyForLogging);
 		}
 		return publications;
-		// var newPublications = new ArrayList<Map<String, Object>>();
-		// for (var p : publications) {
-		// var defaultedValues = Map.of("id", p.id(), "mogulId", p.mogulId(), "plugin",
-		// p.plugin(), "created",
-		// p.created().getTime());
-		// var all = new HashMap<String, Object>(defaultedValues);
-		// if (p.published() != null)
-		// all.put("published", p.published().getTime());
-		// if (StringUtils.hasText(p.url()))
-		// all.put("url", p.url());
-		// newPublications.add(all);
-		// }
-		// if (!newPublications.isEmpty())
-		// this.log.debug("returning {} publications for episode {}",
-		// newPublications.size(), episodeKeyForLogging);
-		// return newPublications;
 	}
 
 	@MutationMapping

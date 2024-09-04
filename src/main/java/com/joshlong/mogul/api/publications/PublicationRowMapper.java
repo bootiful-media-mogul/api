@@ -50,7 +50,7 @@ class PublicationRowMapper implements RowMapper<Publication> {
 		Assert.notNull(state, "state must not be null");
 		Assert.notNull(stateEnum, "stateEnum must not be null");
 		return new Publication( //
-				rs.getLong("mogul_id"), //
+				rs.getLong("mogul"), //
 				rs.getLong("id"), //
 				rs.getString("plugin"), //
 				rs.getDate("created"), //

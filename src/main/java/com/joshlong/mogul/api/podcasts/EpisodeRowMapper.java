@@ -5,8 +5,6 @@ import org.springframework.jdbc.core.RowMapper;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
 
@@ -27,7 +25,7 @@ class EpisodeRowMapper implements RowMapper<Episode> {
 		var segments = this.segmentFunction.apply(episodeId);
 		return new Episode(//
 				episodeId, //
-				resultSet.getLong("podcast_id"), //
+				resultSet.getLong("podcast"), //
 				resultSet.getString("title"), //
 				resultSet.getString("description"), //
 				resultSet.getDate("created"), //

@@ -2,7 +2,6 @@ package com.joshlong.mogul.api.notifications;
 
 import com.joshlong.mogul.api.mogul.MogulService;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
-import org.springframework.context.event.EventListener;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Controller;

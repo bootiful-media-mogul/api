@@ -9,7 +9,6 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 
 import java.net.MalformedURLException;
-import java.util.UUID;
 
 class DefaultAiClient implements AiClient {
 
@@ -17,17 +16,9 @@ class DefaultAiClient implements AiClient {
 
 	private final ChatClient aiClient;
 
-	private final TranscriptionClient transcriptionClient;
-
-	DefaultAiClient(ImageModel imageModel, ChatClient aiClient, TranscriptionClient transcriptionClient) {
+	DefaultAiClient(ImageModel imageModel, ChatClient aiClient) {
 		this.imageModel = imageModel;
 		this.aiClient = aiClient;
-		this.transcriptionClient = transcriptionClient;
-	}
-
-	@Override
-	public String transcribe(Resource audio) {
-		return this.transcriptionClient.transcribe(UUID.randomUUID().toString(), audio);
 	}
 
 	@Override

@@ -17,7 +17,6 @@ class PublicationConfiguration {
 				.registerJdkProxy(PodcastEpisodePublisherPlugin.class, org.springframework.aop.SpringProxy.class,
 						org.springframework.aop.framework.Advised.class,
 						org.springframework.core.DecoratingProxy.class);
-
 		}
 
 	}

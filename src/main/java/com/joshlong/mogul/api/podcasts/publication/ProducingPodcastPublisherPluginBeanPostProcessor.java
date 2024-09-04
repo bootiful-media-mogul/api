@@ -48,7 +48,7 @@ class ProducingPodcastPublisherPluginBeanPostProcessor implements BeanFactoryAwa
 	@SuppressWarnings("unchecked")
 	public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
 		if (bean instanceof PodcastEpisodePublisherPlugin plugin) {
-			log.debug("bean {} is an instance of {}", beanName, PodcastEpisodePublisherPlugin.class.getName());
+			this.log.debug("bean {} is an instance of {}", beanName, PodcastEpisodePublisherPlugin.class.getName());
 			var proxyFactoryBean = new ProxyFactoryBean();
 			proxyFactoryBean.addAdvice((MethodInterceptor) invocation -> {
 				var publishMethod = invocation.getMethod().getName().equalsIgnoreCase("publish");
@@ -60,13 +60,13 @@ class ProducingPodcastPublisherPluginBeanPostProcessor implements BeanFactoryAwa
 					var podcastService = beanFactory.getBean(PodcastService.class);
 					var transactionTemplate = beanFactory.getBean(TransactionTemplate.class);
 
-					log.debug("found the publish method on the plugin bean named {}", beanName);
+					this.log.debug("found the publish method on the plugin bean named {}", beanName);
 					var context = (Map<String, String>) invocation.getArguments()[0];
 					var episode = (Episode) invocation.getArguments()[1];
 
 					var shouldProduceAudio = episode.producedAudioUpdated() == null
 							|| episode.producedAudioUpdated().before(episode.producedAudioAssetsUpdated());
-					log.debug("should produce the audio for episode [{}] from scratch? [{}]",
+					this.log.debug("should produce the audio for episode [{}] from scratch? [{}]",
 							"#" + episode.id() + " / " + episode.title(), shouldProduceAudio);
 					var mogulId = podcastService.getPodcastById(episode.podcastId()).mogulId();
 					return transactionTemplate.execute(status -> {
@@ -76,7 +76,7 @@ class ProducingPodcastPublisherPluginBeanPostProcessor implements BeanFactoryAwa
 									new PodcastEpisodeRenderStartedEvent(episode.id()), Long.toString(episode.id()),
 									null, true, true));
 							var producedManagedFile = podcastProducer.produce(episode);
-							log.debug(
+							this.log.debug(
 									"produced the audio for episode [{}] from scratch to managedFile: [{}] using producer [{}]",
 									episode, producedManagedFile, podcastProducer);
 							NotificationEvents.notifyAsync(NotificationEvent.notificationEventFor(mogulId,
