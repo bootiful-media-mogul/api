@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.integration.channel.DirectChannel;
 import org.springframework.integration.core.GenericHandler;
+import org.springframework.integration.core.GenericTransformer;
 import org.springframework.integration.dsl.DirectChannelSpec;
 import org.springframework.integration.dsl.IntegrationFlow;
 import org.springframework.integration.dsl.MessageChannelSpec;
@@ -52,7 +53,7 @@ class TranscriptionConfiguration {
 	IntegrationFlow transcriptionRequestsIntegrationFlow(TranscriptionService transcriptionService) {
 		return IntegrationFlow//
 			.from(this.requests)//
-			.transform((GenericHandler<TranscriptionRequest>) (payload, headers) -> {
+			.transform((GenericTransformer<TranscriptionRequest, TranscriptionReply>) payload -> {
 				this.log.info("got a transcription request for [{}]", payload);
 				var transcribable = payload.transcribable();
 				var resource = transcribable.audio();

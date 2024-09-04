@@ -69,7 +69,11 @@ class DefaultPodcastService implements PodcastService {
 	@Override
 	public Map<Long, List<Segment>> getPodcastEpisodeSegmentsByEpisodes(Collection<Long> episodes) {
 
-		Assert.state(!episodes.isEmpty(), "there are no episode segments");
+		if (episodes.isEmpty())
+			return new HashMap<>();
+
+		//
+
 		var idsAsString = episodes.stream().map(e -> Long.toString(e)).collect(Collectors.joining(", "));
 		var segments = db
 			.sql("select * from podcast_episode_segment pes where pes.podcast_episode  in (" + idsAsString + ") ")
@@ -200,9 +204,9 @@ class DefaultPodcastService implements PodcastService {
 
 	@ApplicationModuleListener
 	void mogulCreated(MogulCreatedEvent createdEvent) {
-		var podcast = this.createPodcast(createdEvent.mogul().id(), createdEvent.mogul().username() + "'s Podcast");
-		Assert.notNull(podcast,
-				"there should be a newly created podcast associated with the mogul [" + createdEvent.mogul() + "]");
+		var mogul = createdEvent.mogul();
+		var podcast = this.createPodcast(mogul.id(), mogul.givenName() + " " + mogul.familyName() + "'s Podcast");
+		Assert.notNull(podcast, "there should be a newly created podcast associated with the mogul [" + mogul + "]");
 	}
 
 	@Override
@@ -235,7 +239,7 @@ class DefaultPodcastService implements PodcastService {
 	public Podcast createPodcast(Long mogulId, String title) {
 		var kh = new GeneratedKeyHolder();
 		this.db.sql(
-				" insert into podcast (mogul_id, title) values (?,?) on conflict on constraint podcast_mogul_id_title_key do update set title = excluded.title ")
+				" insert into podcast (mogul , title) values (?,?) on conflict on constraint podcast_mogul_id_title_key do update set title = excluded.title ")
 			.params(mogulId, title)
 			.update(kh);
 		var id = JdbcUtils.getIdFromKeyHolder(kh);
@@ -431,7 +435,7 @@ class DefaultPodcastService implements PodcastService {
 						?,
 						?,
 					 	?
-					) ;
+					);
 				""";
 		var segmentAudioManagedFile = this.managedFileService.createManagedFile(mogulId, bucket, uid, "", 0,
 				CommonMediaTypes.MP3);

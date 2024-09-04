@@ -22,5 +22,10 @@ alter table podcast
 alter table podcast_episode_segment
     rename column produced_segment_audio_managed_file_id to produced_segment_audio_managed_file;
 
+alter table podcast_episode
+    rename column podcast_id to podcast;
+
+alter table podcast_episode_segment add column transcript text null ;
+
 alter table publication
     rename column mogul_id to mogul;
