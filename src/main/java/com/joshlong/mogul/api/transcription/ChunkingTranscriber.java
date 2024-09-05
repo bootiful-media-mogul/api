@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.transcription;
 
+import com.joshlong.mogul.api.utils.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.openai.OpenAiAudioTranscriptionModel;
@@ -7,7 +8,6 @@ import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
-import org.springframework.util.FileSystemUtils;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -25,12 +25,14 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * this is an implementation of {@link TranscriptionService transcription service } that
- * divides larger files into smaller ones and then transcribes each of those, aggregating
- * all the results into one big transcript. it also takes care to try to divine pauses -
- * gaps of silence - in the audio and cut along those gaps.
+ * this is an implementation of {@link Transcriber transcription service} that divides
+ * larger files into smaller ones and then transcribes each of those, aggregating all the
+ * results into one big transcript. it also takes care to try to divine pauses - gaps of
+ * silence - in the audio and cut along those gaps.
+ *
+ * @author Josh Long
  */
-class ChunkingTranscriptionService implements TranscriptionService {
+class ChunkingTranscriber implements Transcriber {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -46,7 +48,15 @@ class ChunkingTranscriptionService implements TranscriptionService {
 
 	private final long maxFileSize;
 
-	ChunkingTranscriptionService(OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel, File root,
+	private final Runnable cleanup = () -> {
+		var key = futureInstant(0);
+		log.debug("the current hour instant is {}", key.toString());
+		for (var file : filesToDelete.getOrDefault(key, new HashSet<>())) {
+			FileUtils.delete(file);
+		}
+	};
+
+	ChunkingTranscriber(OpenAiAudioTranscriptionModel openAiAudioTranscriptionModel, File root,
 			long maxFileSizeInBytes) {
 		this.openAiAudioTranscriptionModel = openAiAudioTranscriptionModel;
 		this.root = root;
@@ -56,9 +66,7 @@ class ChunkingTranscriptionService implements TranscriptionService {
 		Assert.state(this.maxFileSize > 0, "the max file size must be greater than zero");
 		Assert.state(this.root.exists() || this.root.mkdirs(),
 				"the root for transcription, " + this.root.getAbsolutePath() + ", could not be created");
-		// garbage files reaper just in case, for whatever reason, we leave a mess behind.
-		var cleanup = new TranscriptionFileCleanupRunnable();
-		Executors.newScheduledThreadPool(1).scheduleAtFixedRate(cleanup, 1, 10, TimeUnit.MINUTES);
+		Executors.newScheduledThreadPool(1).scheduleAtFixedRate(this.cleanup, 1, 10, TimeUnit.MINUTES);
 	}
 
 	@Override
@@ -66,8 +74,7 @@ class ChunkingTranscriptionService implements TranscriptionService {
 		var transcriptionForResource = new File(this.root, UUID.randomUUID().toString());
 		var parentFile = transcriptionForResource.getParentFile();
 		Assert.state(parentFile.exists() || parentFile.mkdirs(), "the directory into which we're writing this file ["
-				+ parentFile.getAbsolutePath() + "] does not " + "exist, and could not be created.");
-
+				+ parentFile.getAbsolutePath() + "] does not exist, and could not be created.");
 		try {
 			var orderedAudio = this.divide(transcriptionForResource, audio)//
 				.map(tr -> (Callable<String>) () -> this.openAiAudioTranscriptionModel.call(tr.audio()))//
@@ -75,52 +82,27 @@ class ChunkingTranscriptionService implements TranscriptionService {
 			return this.executor//
 				.invokeAll(orderedAudio)//
 				.stream()//
-				.map(ChunkingTranscriptionService::from)//
+				.map(ChunkingTranscriber::from)//
 				.collect(Collectors.joining());
 		} //
 		catch (Exception e) {
 			throw new RuntimeException(e);
 		} //
 		finally {
-			delete(transcriptionForResource);
+			FileUtils.delete(transcriptionForResource);
 		}
-	}
-
-	private static void delete(File file) {
-		if (file != null) {
-			if (file.isFile()) {
-				file.delete();
-			}
-		} //
-		else {
-			FileSystemUtils.deleteRecursively(file);
-		}
-	}
-
-	private class TranscriptionFileCleanupRunnable implements Runnable {
-
-		@Override
-		public void run() {
-			var key = futureInstant(0);
-			log.debug("the current hour instant is {}", key.toString());
-			for (var file : filesToDelete.getOrDefault(key, new HashSet<>())) {
-				delete(file);
-			}
-		}
-
 	}
 
 	private Instant futureInstant(int hour) {
 		var now = ZonedDateTime.now(ZoneId.systemDefault());
-		var fiveHoursFromNow = now.plusHours(hour);
-		var topOfTheHour = fiveHoursFromNow.withMinute(0).withSecond(0).withNano(0);
+		var hoursFromNow = now.plusHours(hour);
+		var topOfTheHour = hoursFromNow.withMinute(0).withSecond(0).withNano(0);
 		return topOfTheHour.toInstant();
 	}
 
 	private void enqueueForDeletion(File file) {
-		var futureInstant = futureInstant(5);
+		var futureInstant = futureInstant(2);
 		this.filesToDelete.computeIfAbsent(futureInstant, k -> new HashSet<>()).add(file);
-		this.log.debug("enqueued {} for deletion at {}", file.getAbsolutePath(), futureInstant.toString());
 	}
 
 	private Stream<TranscriptionSegment> divide(File transcriptionForResource, Resource audio) throws Exception {
@@ -130,15 +112,12 @@ class ChunkingTranscriptionService implements TranscriptionService {
 		Assert.state(transcriptionForResource.mkdirs(),
 				"the directory [" + transcriptionForResource.getAbsolutePath() + "] has not been created");
 		FileCopyUtils.copy(audio.getInputStream(), new FileOutputStream(originalAudio));
-
 		this.enqueueForDeletion(transcriptionForResource);
-
 		var duration = this.durationFor(originalAudio);
 		var sizeInBytes = originalAudio.length();
 
 		// special case if the file is small enough
 		if (originalAudio.length() < this.maxFileSize) {
-			this.log.debug("the content length is less than the max file size, so returning a single segment batch.");
 			return Stream
 				.of(new TranscriptionSegment(new FileSystemResource(originalAudio), 0, 0, duration.toMillis()));
 		}
@@ -229,10 +208,6 @@ class ChunkingTranscriptionService implements TranscriptionService {
 		Assert.state(exitCode == 0, "the result must be a zero exit code, but was [" + exitCode + "]");
 	}
 
-	/**
-	 * {@link NumberFormat number formats} are not cheap or thread safe so we solve that
-	 * with a thread local through this access method.
-	 */
 	private NumberFormat numberFormat() {
 		if (NUMBER_FORMAT.get() == null) {
 			var formatter = NumberFormat.getInstance();

@@ -1,13 +1,17 @@
 package com.joshlong.mogul.api.transcription;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -18,17 +22,20 @@ abstract class SilenceDetector {
 
 	private static final Map<String, Pattern> PATTERNS = new ConcurrentHashMap<>();
 
-	public static Silence[] detect(File audio) throws Exception {
+	private static final Logger log = LoggerFactory.getLogger(SilenceDetector.class);
+
+	static Silence[] detect(File audio) throws Exception {
+		log.debug("detecting silence in the file [{}]", audio.getAbsolutePath());
 		var silence = new File(audio.getParentFile(), "silence");
 		var result = new ProcessBuilder()
 			.command("ffmpeg", "-i", audio.getAbsolutePath(), "-af", "silencedetect=noise=-30dB:d=0.5", "-f", "null",
-					silence.getAbsolutePath())
+					"-")
 			.inheritIO()
-			.redirectOutput(ProcessBuilder.Redirect.PIPE)
-			.redirectError(ProcessBuilder.Redirect.PIPE)
+			.redirectOutput(silence)
+			.redirectError(silence)
 			.start();
-		Assert.state(result.waitFor() == 0, "the result of silence detection should be 0, or good.");
-		try (var output = new InputStreamReader(result.getErrorStream())) {
+		Assert.state(result.waitFor(1, TimeUnit.MINUTES), "the result of silence detection should be 0, or good.");
+		try (var output = new InputStreamReader(new FileInputStream(silence))) {
 			var content = FileCopyUtils.copyToString(output);
 			var silenceDetectionLogLines = Stream.of(content.split(System.lineSeparator()))
 				.filter(l -> l.contains("silencedetect"))

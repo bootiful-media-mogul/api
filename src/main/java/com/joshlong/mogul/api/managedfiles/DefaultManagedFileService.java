@@ -4,7 +4,6 @@ import com.joshlong.mogul.api.utils.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.context.event.EventListener;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
@@ -23,7 +22,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -48,13 +50,15 @@ import java.util.stream.Collectors;
 @Service
 class DefaultManagedFileService implements ManagedFileService {
 
+	private final Logger log = LoggerFactory.getLogger(getClass());
+
 	private final ManagedFileDeletionRequestRowMapper managedFileDeletionRequestRowMapper = new ManagedFileDeletionRequestRowMapper();
+
+	private final ThreadLocal<Map<Long, ManagedFile>> managedFiles = new ThreadLocal<>();
 
 	private final JdbcClient db;
 
 	private final Storage storage;
-
-	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	private final ApplicationEventPublisher publisher;
 
@@ -68,29 +72,15 @@ class DefaultManagedFileService implements ManagedFileService {
 		this.transactionTemplate = transactionTemplate;
 	}
 
-	@EventListener
-	void onManagedFileUpdatedEvent(ManagedFileUpdatedEvent managedFileUpdatedEvent) {
-		this.log.debug("removing managed file {} from cache", managedFileUpdatedEvent.managedFile().id());
-		// this.cache.remove(managedFileUpdatedEvent.managedFile().id());
-	}
-
-	@EventListener
-	void onManagedFileDeletedEvent(ManagedFileDeletedEvent managedFileDeletedEvent) {
-		this.log.debug("removing managed file {} from cache", managedFileDeletedEvent.managedFile().id());
-		// this.cache.remove(managedFileDeletedEvent.managedFile().id());
-	}
-
 	@Override
-
 	public void write(Long managedFileId, String filename, MediaType mts, File resource) {
 		this.write(managedFileId, filename, mts, new FileSystemResource(resource));
 	}
 
 	private ManagedFile forceReadManagedFile(Long managedFileId) {
 		var managedFile = this.getManagedFile(managedFileId);
-		this.managedFiles.get().remove(managedFileId); // this should have the effect of
-														// forcing the
-		managedFile.contentType();// force it to evaluate
+		this.managedFiles.get().remove(managedFileId);
+		managedFile.contentType();// triggers the rehydration sideeffect. yuck.
 		return managedFile;
 	}
 
@@ -104,10 +94,11 @@ class DefaultManagedFileService implements ManagedFileService {
 		this.db.sql("update managed_file set filename =?, content_type =? , written = true , size =? where id=?")
 			.params(filename, clientMediaType.toString(), contentLength(resource), managedFileId)
 			.update();
-		this.log.debug("are we uploading on a virtual thread? {}", Thread.currentThread().isVirtual());
 		var freshManagedFile = this.forceReadManagedFile(managedFileId);
-		this.log.debug("managed file has been written? {}", freshManagedFile.written());
-		this.publisher.publishEvent(new ManagedFileDeletedEvent(freshManagedFile));
+		this.transactionTemplate.execute(tx -> {
+			this.publisher.publishEvent(new ManagedFileUpdatedEvent(freshManagedFile));
+			return null;
+		});
 	}
 
 	/**
@@ -160,21 +151,19 @@ class DefaultManagedFileService implements ManagedFileService {
 
 	@Override
 	public void completeManagedFileDeletion(Long managedFileDeletionRequestId) {
-		var mfRequest = this.getManagedFileDeletionRequest(managedFileDeletionRequestId);
-		Assert.notNull(mfRequest, "the managed file deletion request should not be null");
-		storage.remove(mfRequest.bucket(), mfRequest.folder() + '/' + mfRequest.storageFilename());
+		var managedFileDeletionRequest = this.getManagedFileDeletionRequest(managedFileDeletionRequestId);
+		Assert.notNull(managedFileDeletionRequest, "the managed file deletion request should not be null");
+		storage.remove(managedFileDeletionRequest.bucket(),
+				managedFileDeletionRequest.folder() + '/' + managedFileDeletionRequest.storageFilename());
 		this.db.sql(" update  managed_file_deletion_request  set deleted = true where id = ? ")
 			.param(managedFileDeletionRequestId)
 			.update();
-		var managedFileDeletionRequest = this.getManagedFileDeletionRequest(managedFileDeletionRequestId);
-		log.debug("completed [{}]", managedFileDeletionRequest);
 	}
 
 	@Override
 	@Transactional
 	public void deleteManagedFile(Long managedFileId) {
 		var managedFile = this.getManagedFile(managedFileId);
-
 		// very important that we do this part FIRST since the calls to mogulId will
 		// lazily trigger the loading of the managed_file, which will be deleted if we
 		// waited unti after the next line
@@ -213,24 +202,21 @@ class DefaultManagedFileService implements ManagedFileService {
 	public ManagedFile createManagedFile(Long mogulId, String bucket, String folder, String fileName, long size,
 			MediaType mediaType) {
 		var kh = new GeneratedKeyHolder();
-		this.db.sql("""
-					insert into managed_file( storage_filename, mogul , bucket, folder, filename, size,content_type)
-					VALUES (?,?,?,?,?,?,?)
-				""")
+		var sql = """
+				insert into managed_file( storage_filename, mogul , bucket, folder, filename, size,content_type)
+				values (?,?,?,?,?,?,?)
+				""";
+		this.db.sql(sql)
 			.params(UUID.randomUUID().toString(), mogulId, bucket, folder, fileName, size, mediaType.toString())
 			.update(kh);
-		log.info("the bucket is [{}]", bucket);
 		return this.getManagedFile(((Number) Objects.requireNonNull(kh.getKeys()).get("id")).longValue());
 	}
 
 	private void initializeManagedFile(ResultSet rs, ManagedFile managedFile) throws SQLException {
-
 		managedFile.hydrate(rs.getLong("mogul"), rs.getLong("id"), rs.getString("bucket"),
 				rs.getString("storage_filename"), rs.getString("folder"), rs.getString("filename"),
 				rs.getDate("created"), rs.getBoolean("written"), rs.getLong("size"), rs.getString("content_type"));
 	}
-
-	private final ThreadLocal<Map<Long, ManagedFile>> managedFiles = new ThreadLocal<>();
 
 	private final TransactionSynchronization transactionSynchronization = new TransactionSynchronization() {
 
@@ -238,10 +224,9 @@ class DefaultManagedFileService implements ManagedFileService {
 		public void beforeCompletion() {
 			var managedFileMap = managedFiles.get();
 			if (managedFileMap != null && !managedFileMap.isEmpty()) {
-				log.debug("beforeCompletion(): for the current thread there are {} managed files ",
+				log.trace("beforeCompletion(): for the current thread there are {} managed files ",
 						managedFileMap.size());
-				// lets get all the ids, then visit each managed file and call its hydrate
-				// method with the right parameters
+				// let's get all the IDs, then visit each managed file and hydrate.
 				var ids = managedFileMap.values()
 					.stream()
 					.map(ManagedFile::id)
@@ -262,9 +247,9 @@ class DefaultManagedFileService implements ManagedFileService {
 
 	};
 
-	/*
-	 * don't return fully initialized Managedfiles. Instead, we want to cache the results
-	 * here.
+	/**
+	 * returns lazy, stand-in proxies to {@link ManagedFile managedfiles } that
+	 * materialize when used.
 	 */
 	@Override
 	public ManagedFile getManagedFile(Long managedFileId) {
@@ -276,26 +261,14 @@ class DefaultManagedFileService implements ManagedFileService {
 				this.managedFiles.set(new ConcurrentSkipListMap<>());
 
 			// this allows any managed file that for whatever reason we're manipulating
-			// and <EM>not</EM> able to wait for the transaction to commit to hydrate its
-			// own
-			// state in place.
-			var hydration = (Consumer<ManagedFile>) managedFile -> db.sql("select * from managed_file where id = ?")
+			// and NOT able to wait for the transaction to commit to hydrate its state
+			var hydration = (Consumer<ManagedFile>) managedFile -> this.db
+				.sql("select * from managed_file where id = ?")
 				.param(managedFileId)
 				.query(rs -> {
-					var error = Arrays //
-						.stream("""
-									manually hydrating ManagedFile #{} which means we couldn't find this managedFile in
-									the transaction synchronization cache. this typically happens when the transaction
-									synchronization hook, afterCommit, hasn't run yet and something is reading
-									attributes on the ManagedFile (before the transaction has returned).
-									This sort of thing happens, but ideally it'd happen rarely, or at least just for a
-									handful of objects.
-								""".split(System.lineSeparator()))//
-						.map(String::strip) //
-						.collect(Collectors.joining(" ")) //
-						.trim();
-					log.debug(error, managedFileId);
-					initializeManagedFile(rs, managedFile);
+					if (this.log.isTraceEnabled())
+						this.log.trace("Manually hydrating ManagedFile #{}.".trim(), managedFileId);
+					this.initializeManagedFile(rs, managedFile);
 				});
 
 			return this.managedFiles.get().computeIfAbsent(managedFileId, mid -> new ManagedFile(mid, hydration)); //

@@ -66,7 +66,7 @@ class ManagedFileController {
 		log.debug("guessing the media type for [{}] is  {}", file.getOriginalFilename(), mediaType);
 		this.managedFileService.write(managedFileId, originalFilename, mediaType, file.getResource());
 		var updated = this.managedFileService.getManagedFile(managedFileId);
-		log.debug("finished writing managed file [{}] to s3: {}:{}", id, originalFilename, updated.toString());
+		this.log.trace("finished writing managed file [{}] to s3: {}:{}", id, originalFilename, updated.toString());
 		return Map.of("managedFileId", id);
 	}
 

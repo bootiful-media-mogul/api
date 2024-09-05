@@ -63,7 +63,7 @@ class Storage {
 			var buffer = new byte[chunkSize];
 			var bytesRead = -1;
 			while ((bytesRead = inputStream.read(buffer)) > 0) {
-				this.log.debug("uploading to part [{}]", partNumber);
+				this.log.trace("uploading part [{}]", partNumber);
 				var actualBytes = bytesRead == chunkSize ? buffer : Arrays.copyOf(buffer, bytesRead);
 				var uploadPartRequest = UploadPartRequest.builder()
 					.bucket(bucketName)
@@ -92,7 +92,7 @@ class Storage {
 	public void write(String bucket, String objectName, Resource resource) {
 		try {
 			var largeFile = DataSize.ofMegabytes(10);
-			log.debug("started executing an S3 PUT for [{}/{}] on thread [{}]", bucket, objectName,
+			log.info("started executing an S3 PUT for [{}/{}] on thread [{}]", bucket, objectName,
 					Thread.currentThread());
 			ensureBucketExists(bucket);
 			doWriteForLargeFiles(bucket, objectName, resource, largeFile);
@@ -114,11 +114,11 @@ class Storage {
 	private void ensureBucketExists(String bucketName) {
 		try {
 			if (!bucketExists(bucketName)) {
-				log.info("attempting to create the bucket called [{}]", bucketName);
-				s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
+				this.log.info("attempting to create the bucket called [{}]", bucketName);
+				this.s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
 			}
 			else {
-				log.debug("the bucket named [{}] already exists", bucketName);
+				this.log.trace("the bucket named [{}] already exists", bucketName);
 			}
 		} //
 		catch (Throwable throwable) {

@@ -205,11 +205,6 @@ class PodcastController {
 		return publication.published() != null ? publication.published().getTime() : null;
 	}
 
-	// created: Float
-	// published: Float
-
-	// todo return a Publication from this endpoint
-
 	@MutationMapping
 	Publication publishPodcastEpisode(@Argument Long episodeId, @Argument String pluginName) {
 		var episode = this.podcastService.getPodcastEpisodeById(episodeId);
@@ -241,19 +236,16 @@ class PodcastController {
 	void broadcastPodcastEpisodeCompletionEventToClients(PodcastEpisodeCompletionEvent podcastEpisodeCompletionEvent) {
 		var episode = podcastEpisodeCompletionEvent.episode();
 		var id = episode.id();
-		this.log.debug("going to send an event to the clients listening for episode [{}]", id);
 		try {
 			var map = Map.of("episodeId", id, "complete", episode.complete());
 			var json = JsonUtils.write(map);
-			this.log.debug("json: {}", json);
-			var evt = NotificationEvent.notificationEventFor(podcastEpisodeCompletionEvent.mogulId(),
+			var notificationEvent = NotificationEvent.notificationEventFor(podcastEpisodeCompletionEvent.mogulId(),
 					podcastEpisodeCompletionEvent, Long.toString(episode.id()), json, false, false);
-			this.publisher.publishEvent(evt);
-			this.log.debug("sent an event to clients listening for {}", episode);
+			this.publisher.publishEvent(notificationEvent);
 		} //
 		catch (Exception e) {
-			this.log.warn("experienced an exception when trying to emit a podcast completed event via SSE for id # {}",
-					id);
+			this.log.warn("experienced an exception when trying to emit "
+					+ "a podcast completed event for podcast episode id # {}", id);
 		} //
 
 	}

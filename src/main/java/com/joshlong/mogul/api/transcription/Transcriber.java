@@ -5,7 +5,7 @@ import org.springframework.core.io.Resource;
 /**
  * given an audio file, return a textual transcription of that audio file. simple? surely.
  */
-public interface TranscriptionService {
+public interface Transcriber {
 
 	String transcribe(Resource audio);
 
