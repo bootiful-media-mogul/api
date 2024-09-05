@@ -179,9 +179,6 @@ class DefaultPublicationService implements PublicationService {
 
 	private void refreshCache() {
 
-		if (this.log.isDebugEnabled())
-			this.log.debug("refreshing the publication cache");
-
 		this.publicationsCache.clear();
 
 		this.db.sql("select * from publication") //

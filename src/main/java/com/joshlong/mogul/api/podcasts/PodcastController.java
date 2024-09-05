@@ -55,13 +55,8 @@ class PodcastController {
 
 	@SchemaMapping
 	Collection<Publication> publications(Episode episode) {
-		var episodeKeyForLogging = episode.id() + "/" + episode.title();
-		var publications = this.publicationService.getPublicationsByPublicationKeyAndClass(episode.publicationKey(),
+		return this.publicationService.getPublicationsByPublicationKeyAndClass(episode.publicationKey(),
 				episode.getClass());
-		if (!publications.isEmpty()) {
-			this.log.debug("good news! there are " + "publications for episode {}", episodeKeyForLogging);
-		}
-		return publications;
 	}
 
 	@MutationMapping

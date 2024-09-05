@@ -13,7 +13,6 @@ class AudioEncoderTest {
 	AudioEncoderTest() throws Exception {
 	}
 
-	@Test
 	void transcodeWavToMp3s() throws Exception {
 		var wav = new File(
 				SystemPropertyUtils.resolvePlaceholders("${HOME}/Desktop/misc/sample-podcast/test.wav ".trim()));
