@@ -62,6 +62,7 @@ public class PodcastProducer {
 				segmentFiles.add(localFile);
 			}
 			var producedWav = this.produce(workspace, segmentFiles.toArray(new File[0]));
+			// todo should this be converted to an .mp3 now?
 			var producedAudio = episode.producedAudio();
 			this.managedFileService.write(producedAudio.id(), producedAudio.filename(),
 					MediaType.parseMediaType(producedAudio.contentType()), producedWav);
