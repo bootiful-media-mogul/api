@@ -17,7 +17,7 @@ class AudioEncoder implements Encoder {
 	public File encode(File input) {
 		try {
 			var inputAbsolutePath = input.getAbsolutePath();
-			log.debug("absolute path of audio file to encode: {}", inputAbsolutePath);
+			this.log.debug("absolute path of audio file to encode: {}", inputAbsolutePath);
 			Assert.state(input.exists() && input.isFile(),
 					"the input ['" + inputAbsolutePath + "'] must be a valid, existing file");
 			var mp3Ext = "mp3";
@@ -25,7 +25,7 @@ class AudioEncoder implements Encoder {
 				return input;
 			var mp3 = FileUtils.createRelativeTempFile(input, "." + mp3Ext);
 			var mp3AbsolutePath = mp3.getAbsolutePath();
-			log.debug("mp3: {}", mp3AbsolutePath);
+			this.log.debug("mp3: {}", mp3AbsolutePath);
 			var exit = Runtime.getRuntime()
 				.exec(new String[] { "ffmpeg", "-i", inputAbsolutePath, mp3AbsolutePath })
 				.waitFor();

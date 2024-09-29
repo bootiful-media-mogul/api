@@ -74,8 +74,8 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 
 	@Override
 	public void publish(Map<String, String> context, Episode payload) {
-		log.debug("publishing to podbean with context [{}] and payload [{}]." + " produced audio is [{}]", context,
-				payload, payload.producedAudio());
+		log.debug("publishing to podbean with context [{}] and payload [{}]. produced audio is [{}]", context, payload,
+				payload.producedAudio());
 		// todo some sort of thread local in which to stash the context
 		// to make it available to the multitenant TokenProvider
 
@@ -101,10 +101,10 @@ class PodbeanPodcastEpisodePublisherPlugin implements PodcastEpisodePublisherPlu
 		if (permalinkUrl != null) {
 			context.put(PublisherPlugin.CONTEXT_URL, permalinkUrl.toString());
 			log.debug("got the published episode's (Episode#{}) podbean url: {}", payload.id(), permalinkUrl);
-		}
-		else
+		} //
+		else {
 			log.debug("the published episode's (Episode#{}) podbean url is null", payload.id());
-
+		}
 		context.put(CONTEXT_PODBEAN_PODCAST_ID, podbeanEpisode.getPodcastId());
 		context.put(CONTEXT_PODBEAN_EPISODE_ID, podbeanEpisode.getId());
 		context.put(CONTEXT_PODBEAN_EPISODE_PUBLISH_DATE_IN_MILLISECONDS,

@@ -21,10 +21,8 @@ import org.springframework.util.Assert;
 
 /**
  * By default, the Podbean autoconfiguration creates a global and singular instance of
- * {@link TokenProvider tp} based on the configuration stipulated at design time.
- * <p>
- * This is a multi-tenant implementation that is aware of the currently signed in
- * {@link Mogul }.
+ * {@link TokenProvider tp} based on the configuration stipulated at design time. This is
+ * a multi-tenant implementation that is aware of the currently signed in {@link Mogul }.
  */
 @Configuration
 @ImportRuntimeHints(PodbeanConfiguration.Hints.class)
@@ -80,7 +78,7 @@ class PodbeanConfiguration {
 
 		@Override
 		public Token getToken() {
-			var currentMogul = mogulService.getCurrentMogul();
+			var currentMogul = this.mogulService.getCurrentMogul();
 			var mogulId = currentMogul.id();
 			var settingsForTenant = settings.getAllSettingsByCategory(mogulId,
 					PodbeanPodcastEpisodePublisherPlugin.PLUGIN_NAME);

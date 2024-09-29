@@ -26,6 +26,10 @@ import static org.springframework.security.config.Customizer.withDefaults;
 @SpringBootApplication
 public class ApiApplication {
 
+	public static void main(String[] args) {
+		SpringApplication.run(ApiApplication.class, args);
+	}
+
 	static class Hints implements RuntimeHintsRegistrar {
 
 		@Override
@@ -37,21 +41,17 @@ public class ApiApplication {
 
 	}
 
-	public static void main(String[] args) {
-		SpringApplication.run(ApiApplication.class, args);
-	}
-
 	@Bean
 	SecurityFilterChain jwtSecurityFilterChain(HttpSecurity http) throws Exception {
-		http //
+		return http //
 			.authorizeHttpRequests((authorize) -> authorize //
 				.requestMatchers(EndpointRequest.toAnyEndpoint())
 				.permitAll() //
 				.anyRequest()
 				.authenticated()//
 			)//
-			.oauth2ResourceServer((resourceServer) -> resourceServer.jwt(withDefaults()));
-		return http.build();
+			.oauth2ResourceServer(resourceServer -> resourceServer.jwt(withDefaults()))//
+			.build();
 	}
 
 	@Bean

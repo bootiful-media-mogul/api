@@ -122,8 +122,12 @@ class DefaultPodcastService implements PodcastService {
 				""";
 
 		var all = this.db.sql(sql).params(mf.id(), mf.id()).query((rs, rowNum) -> rs.getLong("id")).set();
-		if (all.isEmpty())
+		if (all.isEmpty()) {
+			this.log.trace(
+					"got a {}but it doesn't seem to affect any of our podcasts. so, kicking the can down the road",
+					managedFileUpdatedEvent.getClass().getName());
 			return;
+		}
 
 		var episodeId = all.iterator().next();
 		var episode = this.getPodcastEpisodeById(episodeId);
@@ -133,9 +137,11 @@ class DefaultPodcastService implements PodcastService {
 		if (episode.graphic().id().equals(mf.id())) { // either it's the graphic..
 			updatedFlag.set(true);
 			this.mediaNormalizer.normalize(episode.graphic(), episode.producedGraphic());
+			this.log.debug("got a {}, updated the produced graphic for podcast episode {} and managedFile {}",
+					managedFileUpdatedEvent.getClass().getName(), episode.id(), mf.id());
 		} //
 		else {
-			// or it's one of the segments..
+			// or it's one of the segments
 			for (var segment : segments) {
 				if (segment.audio().id().equals(mf.id())) {
 					this.mediaNormalizer.normalize(segment.audio(), segment.producedAudio());
@@ -150,6 +156,10 @@ class DefaultPodcastService implements PodcastService {
 								this.managedFileService.read(segment.producedAudio().id()));
 					}
 					updatedFlag.set(true);
+					this.log.debug(
+							"got a {}, updated the produced audio for podcast episode segment {} and managedFile {}",
+							managedFileUpdatedEvent.getClass().getName(), segment.id(), mf.id());
+
 				}
 			}
 		}

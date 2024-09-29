@@ -26,7 +26,6 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 import static com.joshlong.mogul.api.PublisherPlugin.CONTEXT_URL;
@@ -111,8 +110,7 @@ class DefaultPublicationService implements PublicationService {
 		Assert.notNull(plugin, "the plugin must not be null");
 		Assert.notNull(payload, "the payload must not be null");
 
-		var configuration = this.settingsLookup
-			.apply(new SettingsLookup(this.mogulService.getCurrentMogul().id(), plugin.name()));
+		var configuration = this.settingsLookup.apply(new SettingsLookup(mogulId, plugin.name()));
 		var context = new ConcurrentHashMap<String, String>();
 		context.putAll(configuration);
 		context.putAll(contextAndSettings);
@@ -211,7 +209,9 @@ class DefaultPublicationService implements PublicationService {
 
 	@EventListener(ApplicationReadyEvent.class)
 	void applicationReady() {
-		this.scheduledExecutorService.schedule(this::refreshCache, 1, TimeUnit.MINUTES);
+		this.scheduledExecutorService.submit(this::refreshCache);
+		// todo why is this a minute later? why did this code exist?
+		// this.scheduledExecutorService.schedule(this::refreshCache, 1, TimeUnit.);
 	}
 
 	@EventListener(PublicationUpdatedEvent.class)

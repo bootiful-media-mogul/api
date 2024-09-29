@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.podcasts.production;
 
+import com.joshlong.mogul.api.managedfiles.CommonMediaTypes;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.podcasts.Episode;
@@ -8,15 +9,13 @@ import com.joshlong.mogul.api.utils.FileUtils;
 import com.joshlong.mogul.api.utils.ProcessUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.MediaType;
-import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
-import java.nio.file.Files;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Locale;
@@ -25,47 +24,60 @@ import java.util.stream.Collectors;
 
 /**
  * given a {@link com.joshlong.mogul.api.podcasts.Podcast}, turn this into a complete
- * audio file
+ * audio file.
  */
-
-@Component
 public class PodcastProducer {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
+
+	private final AudioEncoder audioEncoder;
 
 	private final ManagedFileService managedFileService;
 
 	private final PodcastService podcastService;
 
-	PodcastProducer(ManagedFileService managedFileService, PodcastService podcastService) {
+	private final File root;
+
+	PodcastProducer(AudioEncoder audioEncoder, ManagedFileService managedFileService, PodcastService podcastService,
+			File root) {
+		this.audioEncoder = audioEncoder;
 		this.managedFileService = managedFileService;
 		this.podcastService = podcastService;
+		this.root = root;
+		Assert.notNull(this.audioEncoder, "the AudioEncoder reference is required");
+		Assert.notNull(this.managedFileService, "the ManagedFileService reference is required");
+		Assert.notNull(this.root, "the root folder reference is required");
+		Assert.notNull(this.podcastService, "the PodcastService reference is required");
 	}
 
 	public ManagedFile produce(Episode episode) {
-
-		var workspace = (File) null;
+		var managedFileRoot = new File(this.root, "managed-files-for-podcast-production");
+		var workspace = new File(managedFileRoot, episode.id() + "/" + UUID.randomUUID() + "/");
+		this.log.debug("going to produce podcast in the following workspace folder [{}]", workspace.getAbsolutePath());
 		try {
-			workspace = new File(Files.createTempDirectory("managed-files-for-podcast-production").toFile(),
-					Long.toString(episode.id()));
 			Assert.state(workspace.exists() || workspace.mkdirs(),
 					"the workspace directory [" + workspace.getAbsolutePath() + "] does not exist");
 			var episodeId = episode.id();
 			var segments = this.podcastService.getPodcastEpisodeSegmentsByEpisode(episodeId);
 			var segmentFiles = new ArrayList<File>();
 			for (var s : segments) {
-				var localFile = new File((File) null, UUID.randomUUID() + "_" + s.producedAudio().filename());
+				var localFile = new File(workspace, Long.toString(s.producedAudio().id()));
+				this.log.debug("produced audio file name locally {}", localFile.getAbsolutePath());
 				try (var in = this.managedFileService.read(s.producedAudio().id()).getInputStream();
 						var out = new FileOutputStream(localFile)) {
 					FileCopyUtils.copy(in, out);
+					this.log.debug("downloading [{}] to [{}]", s.producedAudio().id(), localFile.getAbsolutePath());
+				} //
+				catch (IOException e) {
+					this.log.error("got an exception when downloading the file to ");
 				}
 				segmentFiles.add(localFile);
 			}
 			var producedWav = this.produce(workspace, segmentFiles.toArray(new File[0]));
+			var producedMp3 = this.audioEncoder.encode(producedWav);
 			// todo should this be converted to an .mp3 now?
 			var producedAudio = episode.producedAudio();
-			this.managedFileService.write(producedAudio.id(), producedAudio.filename(),
-					MediaType.parseMediaType(producedAudio.contentType()), producedWav);
+			this.managedFileService.write(producedAudio.id(), producedMp3.getName(), CommonMediaTypes.MP3, producedMp3);
 			this.log.debug("writing [{}]", episode.id());
 			this.podcastService.writePodcastEpisodeProducedAudio(episode.id(), producedAudio.id());
 			this.log.debug("wrote [{}]", episode.id());
@@ -75,10 +87,14 @@ public class PodcastProducer {
 			throw new RuntimeException(throwable);
 		} //
 		finally {
-			if (workspace != null) {
-				Assert.state(!workspace.exists() || FileUtils.delete(workspace),
-						"we could not delete the temporary directory [" + workspace.getAbsolutePath() + "]");
+			try {
+				FileUtils.delete(workspace);
+			} //
+			catch (Exception e) {
+				log.trace("could not delete workspace directory [{}]", workspace.getAbsolutePath());
 			}
+			Assert.state(!workspace.exists(),
+					"we could not delete the temporary directory [" + workspace.getAbsolutePath() + "]");
 		}
 	}
 
