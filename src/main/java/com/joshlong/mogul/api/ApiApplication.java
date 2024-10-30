@@ -47,7 +47,7 @@ public class ApiApplication {
 			.authorizeHttpRequests((authorize) -> authorize //
 				.requestMatchers(EndpointRequest.toAnyEndpoint())
 				.permitAll() //
-				.requestMatchers("/feeds/*")
+				.requestMatchers("/feeds/**")
 				.permitAll()
 				.anyRequest()
 				.authenticated()//
