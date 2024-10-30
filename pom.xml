@@ -21,6 +21,11 @@
 	<dependencies>
 
 		<dependency>
+			<groupId>com.rometools</groupId>
+			<artifactId>rome</artifactId>
+			<version>2.1.0</version>
+		</dependency>
+		<dependency>
 			<groupId>com.maciejwalkowiak.spring</groupId>
 			<artifactId>spring-boot-startup-report</artifactId>
 			<version>0.2.0</version>
