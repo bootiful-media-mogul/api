@@ -7,6 +7,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.graphql.data.method.annotation.SchemaMapping;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -38,6 +39,11 @@ class ManagedFileController {
 	boolean setManagedFileVisibility(@Argument Long managedFileId, @Argument boolean visible) {
 		this.managedFileService.setManagedFileVisibility(managedFileId, visible);
 		return true;
+	}
+
+	@SchemaMapping
+	String publicUrl(ManagedFile managedFile) {
+		return this.managedFileService.getPublicUrlForManagedFile(managedFile.id());
 	}
 
 	@QueryMapping

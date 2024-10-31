@@ -77,6 +77,13 @@ class DefaultManagedFileService implements ManagedFileService {
 		this.write(managedFileId, filename, mts, new FileSystemResource(resource));
 	}
 
+	@Override
+	public String getPublicUrlForManagedFile(Long managedFile) {
+		var mf = getManagedFile(managedFile);
+		var url = "/public/managedfiles/" + mf.id();
+		return (mf.visible()) ? url : null;
+	}
+
 	private ManagedFile forceReadManagedFile(Long managedFileId) {
 		var managedFile = this.getManagedFile(managedFileId);
 		this.managedFiles.get().remove(managedFileId);

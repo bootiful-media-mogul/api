@@ -38,6 +38,8 @@ public interface ManagedFileService {
 	 */
 	void write(Long managedFileId, String filename, MediaType mts, File resource);
 
+	String getPublicUrlForManagedFile(Long managedFile);
+
 	ManagedFile createManagedFile(Long mogulId, String bucket, String folder, String fileName, long size,
 			MediaType mediaType, boolean visible);
 
