@@ -101,6 +101,11 @@ class DefaultManagedFileService implements ManagedFileService {
 		});
 	}
 
+	@Override
+	public void setManagedFileVisibility(Long managedFile, boolean publicAccess) {
+		// todo
+	}
+
 	/**
 	 * this one pulls down a {@link ManagedFile managed file}'s contents from S3, and then
 	 * re-writes it, allowing us to synchronize our view of the S3 asset with the actual

@@ -18,6 +18,9 @@ import java.util.function.Consumer;
  */
 
 public class ManagedFile {
+	
+	
+	
 
 	private final AtomicReference<Long> mogulId = new AtomicReference<>();
 
