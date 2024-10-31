@@ -103,10 +103,7 @@ class DefaultManagedFileService implements ManagedFileService {
 
 	@Override
 	public void setManagedFileVisibility(Long managedFile, boolean publicAccess) {
-		this.db
-				.sql("update managed_file set visible = ? where id = ?")
-				.params(publicAccess, managedFile)
-				.update();
+		this.db.sql("update managed_file set visible = ? where id = ?").params(publicAccess, managedFile).update();
 	}
 
 	/**
@@ -208,15 +205,15 @@ class DefaultManagedFileService implements ManagedFileService {
 	@Override
 	@Transactional
 	public ManagedFile createManagedFile(Long mogulId, String bucket, String folder, String fileName, long size,
-										 MediaType mediaType, boolean visible) {
+			MediaType mediaType, boolean visible) {
 		var kh = new GeneratedKeyHolder();
 		var sql = """
 				insert into managed_file( storage_filename, mogul , bucket, folder, filename, size,content_type, visible)
 				values (?,?,?,?,?,?,?,?)
 				""";
 		this.db.sql(sql)
-				.params(UUID.randomUUID().toString(), mogulId, bucket, folder, fileName, size, mediaType.toString(),
-						visible)
+			.params(UUID.randomUUID().toString(), mogulId, bucket, folder, fileName, size, mediaType.toString(),
+					visible)
 			.update(kh);
 		return this.getManagedFile(((Number) Objects.requireNonNull(kh.getKeys()).get("id")).longValue());
 	}
@@ -224,8 +221,7 @@ class DefaultManagedFileService implements ManagedFileService {
 	private void initializeManagedFile(ResultSet rs, ManagedFile managedFile) throws SQLException {
 		managedFile.hydrate(rs.getLong("mogul"), rs.getLong("id"), rs.getString("bucket"),
 				rs.getString("storage_filename"), rs.getString("folder"), rs.getString("filename"),
-				rs.getTimestamp("created"), rs.getBoolean("written"), rs.getLong("size"),
-				rs.getString("content_type"),
+				rs.getTimestamp("created"), rs.getBoolean("written"), rs.getLong("size"), rs.getString("content_type"),
 				rs.getBoolean("visible"));
 	}
 

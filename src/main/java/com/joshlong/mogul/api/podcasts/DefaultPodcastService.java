@@ -462,7 +462,8 @@ class DefaultPodcastService implements PodcastService {
 		this.ensurePodcastBelongsToMogul(currentMogulId, podcastId);
 		var uid = UUID.randomUUID().toString();
 		var bucket = PodcastService.PODCAST_EPISODES_BUCKET;
-		// these images should probably be publicly visible by default... everything else, no.
+		// these images should probably be publicly visible by default... everything else,
+		// no.
 		var image = this.managedFileService.createManagedFile(currentMogulId, bucket, uid, "", 0,
 				CommonMediaTypes.BINARY, true);
 		var producedGraphic = this.managedFileService.createManagedFile(currentMogulId, bucket, uid,

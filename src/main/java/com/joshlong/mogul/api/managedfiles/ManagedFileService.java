@@ -9,10 +9,9 @@ import java.util.Collection;
 
 public interface ManagedFileService {
 
-
-	// some files can be referenced externally, and they are said to be {@code visible}. 
+	// some files can be referenced externally, and they are said to be {@code visible}.
 	void setManagedFileVisibility(Long managedFile, boolean visible);
-	
+
 	/**
 	 * this will delete the record _and_ queue it up for deletion by a separate process in
 	 * S3 if required
@@ -40,6 +39,6 @@ public interface ManagedFileService {
 	void write(Long managedFileId, String filename, MediaType mts, File resource);
 
 	ManagedFile createManagedFile(Long mogulId, String bucket, String folder, String fileName, long size,
-								  MediaType mediaType, boolean visible);
+			MediaType mediaType, boolean visible);
 
 }

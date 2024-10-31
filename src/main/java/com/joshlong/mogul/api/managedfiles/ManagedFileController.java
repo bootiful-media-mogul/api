@@ -20,6 +20,7 @@ import java.util.Map;
 class ManagedFileController {
 
 	private static final String PUBLIC_MF_URL = "/public/managedfiles/{id}";
+
 	private static final String MF_RW_URL = "/managedfiles/{id}";
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
@@ -32,12 +33,11 @@ class ManagedFileController {
 		this.managedFileService = managedFileService;
 		this.mogulService = mogulService;
 	}
-	
+
 	@MutationMapping
-	boolean setManagedFileVisibility (@Argument Long managedFileId, @Argument boolean visible) {
-		this.managedFileService
-				.setManagedFileVisibility(managedFileId, visible);
-		return true ;
+	boolean setManagedFileVisibility(@Argument Long managedFileId, @Argument boolean visible) {
+		this.managedFileService.setManagedFileVisibility(managedFileId, visible);
+		return true;
 	}
 
 	@QueryMapping
@@ -50,7 +50,7 @@ class ManagedFileController {
 	ResponseEntity<Resource> readPublic(@PathVariable Long id) throws Exception {
 		return doRead(true, id);
 	}
-	
+
 	@GetMapping(MF_RW_URL)
 	@ResponseBody
 	ResponseEntity<Resource> read(@PathVariable Long id) throws Exception {
@@ -63,21 +63,19 @@ class ManagedFileController {
 		Assert.notNull(mf, "the managed file does not exist [" + id + "]");
 		if (assertVisible) {
 			if (!mf.visible()) {
-				this.log.warn("someone is attempting to read " +
-					"managed file #{} even though it's not visible publicly",
+				this.log.warn(
+						"someone is attempting to read " + "managed file #{} even though it's not visible publicly",
 						mf.id());
-				return ResponseEntity
-						.notFound()
-						.build();
+				return ResponseEntity.notFound().build();
 			}
 		}
-		var read = this.managedFileService .read(id);
+		var read = this.managedFileService.read(id);
 		var contentType = mf.contentType();
 		this.log.debug("content-type: {}", contentType);
 		return ResponseEntity.ok()
-				.contentLength(mf.size())
-				.contentType(MediaType.parseMediaType(contentType))
-				.body(read);
+			.contentLength(mf.size())
+			.contentType(MediaType.parseMediaType(contentType))
+			.body(read);
 	}
 
 	@ResponseBody

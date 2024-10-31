@@ -19,7 +19,6 @@ import java.util.function.Consumer;
 
 public class ManagedFile {
 
-
 	private final AtomicBoolean visible = new AtomicBoolean(false);
 
 	private final AtomicReference<Long> mogulId = new AtomicReference<>();
@@ -55,7 +54,7 @@ public class ManagedFile {
 
 	// private implementation detail
 	void hydrate(Long mogulId, Long id, String bucket, String storageFilename, String folder, String filename,
-				 Date created, boolean written, long size, String contentType, boolean visible) {
+			Date created, boolean written, long size, String contentType, boolean visible) {
 		this.mogulId.set(mogulId);
 		this.id.set(id);
 		this.bucket.set(bucket);
@@ -66,7 +65,7 @@ public class ManagedFile {
 		this.written.set(written);
 		this.size.set(size);
 		this.contentType.set(contentType);
-		this.visible.set(visible); 
+		this.visible.set(visible);
 		// very important
 		this.initialized.set(true);
 	}
@@ -127,7 +126,7 @@ public class ManagedFile {
 		this.ensureInitialized();
 		return this.visible.get();
 	}
-	
+
 	@JsonProperty("written")
 	public boolean written() {
 		this.ensureInitialized();
@@ -150,10 +149,9 @@ public class ManagedFile {
 	public String toString() {
 		return "ManagedFile{" + "mogulId=" + mogulId.get() + ", id=" + id.get() + ", bucket='" + bucket.get() + '\''
 				+ ", storageFilename='" + storageFilename.get() + +'\'' + ", folder='" + folder.get() + '\''
-				+ ", filename='" + filename.get() + '\'' + ", created=" + created.get() 
-				+ ", written=" + written.get() + "," +
-				", visible=" + visible.get() + "," +
-				" size=" + size.get() + ", contentType='" + contentType.get() + '\'' + '}';
+				+ ", filename='" + filename.get() + '\'' + ", created=" + created.get() + ", written=" + written.get()
+				+ "," + ", visible=" + visible.get() + "," + " size=" + size.get() + ", contentType='"
+				+ contentType.get() + '\'' + '}';
 	}
 
 	@Override

@@ -105,8 +105,7 @@ class PodcastEpisodeFeed {
 
 		@Override
 		public SyndEntry map(Episode episode) throws Exception {
-			
-			
+
 			var entry = new SyndEntryImpl();
 			entry.setTitle(episode.title());
 			entry.setLink(urls.get(episode.id()));
