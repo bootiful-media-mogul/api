@@ -64,6 +64,7 @@ type ManagedFile {
     contentType: String
     size: Float
     written : Boolean
+    visible : Boolean
 }
 
 type Episode {
@@ -110,6 +111,9 @@ type NotificationEvent {
 type Mutation {
 
     setPodcastEpisodesSegmentTranscript(episodeSegmentId: ID, transcribable: Boolean, transcript: String) :Boolean
+    
+    setManagedFileVisibility( managedFileId: ID,  visible: Boolean) : Boolean
+    
     
     unpublishPodcastEpisodePublication ( publicationId: ID) : Boolean
     publishPodcastEpisode(episodeId:ID, pluginName: String): Boolean

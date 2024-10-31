@@ -415,9 +415,9 @@ class DefaultPodcastService implements PodcastService {
 					);
 				""";
 		var segmentAudioManagedFile = this.managedFileService.createManagedFile(mogulId, bucket, uid, "", 0,
-				CommonMediaTypes.MP3);
+				CommonMediaTypes.MP3, false);
 		var producedSegmentAudioManagedFile = this.managedFileService.createManagedFile(mogulId, bucket, uid, "", 0,
-				CommonMediaTypes.MP3);
+				CommonMediaTypes.MP3, false);
 		var gkh = new GeneratedKeyHolder();
 		this.db //
 			.sql(sql)
@@ -462,12 +462,13 @@ class DefaultPodcastService implements PodcastService {
 		this.ensurePodcastBelongsToMogul(currentMogulId, podcastId);
 		var uid = UUID.randomUUID().toString();
 		var bucket = PodcastService.PODCAST_EPISODES_BUCKET;
+		// these images should probably be publicly visible by default... everything else, no.
 		var image = this.managedFileService.createManagedFile(currentMogulId, bucket, uid, "", 0,
-				CommonMediaTypes.BINARY);
+				CommonMediaTypes.BINARY, true);
 		var producedGraphic = this.managedFileService.createManagedFile(currentMogulId, bucket, uid,
-				"produced-graphic.jpg", 0, CommonMediaTypes.JPG);
+				"produced-graphic.jpg", 0, CommonMediaTypes.JPG, true);
 		var producedAudio = this.managedFileService.createManagedFile(currentMogulId, bucket, uid, "produced-audio.mp3",
-				0, CommonMediaTypes.MP3);
+				0, CommonMediaTypes.MP3, false);
 		var episode = this.createPodcastEpisode(podcastId, title, description, image, producedGraphic, producedAudio);
 		var seg = this.createPodcastEpisodeSegment(currentMogulId, episode.id(), "", 0);
 		Assert.notNull(seg, "could not create a podcast episode segment for episode " + episode.id());

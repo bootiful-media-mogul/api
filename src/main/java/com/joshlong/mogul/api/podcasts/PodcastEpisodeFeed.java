@@ -46,12 +46,12 @@ class PodcastEpisodeFeed {
 		this.markdownService = markdownService;
 	}
 
-	@GetMapping("/feeds/moguls/{mogulId}/podcasts/{podcastId}/episodes.atom")
+	@GetMapping("/public/feeds/moguls/{mogulId}/podcasts/{podcastId}/episodes.atom")
 	ResponseEntity<String> podcastsFeed(@PathVariable long mogulId, @PathVariable long podcastId) {
 		var podcast = this.podcastService.getPodcastById(podcastId);
 		var episodes = this.podcastService.getPodcastEpisodesByPodcast(podcastId);
 		Assert.state(podcast.mogulId().equals(mogulId), "the mogulId must match");
-		var url = "/feeds/moguls/" + mogulId + "/podcasts/" + podcastId + "/episodes.atom";
+		var url = "/public/feeds/moguls/" + mogulId + "/podcasts/" + podcastId + "/episodes.atom";
 		var title = podcast.title();
 		var map = new HashMap<Long, String>();
 		for (var e : episodes) {
