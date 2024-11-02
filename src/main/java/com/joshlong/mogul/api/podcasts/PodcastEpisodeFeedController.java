@@ -36,18 +36,18 @@ class PodcastEpisodeFeedController {
 	String feed() {
 		return "hello world!";
 	}
-}
 
+}
 
 class PodcastEpisodeFeed {
 
-
-	
 	private final ManagedFileService managedFileService;
-	private final PodcastService podcastService;
-	private final PublicationService publicationService;
-	private final MogulService mogulService;
 
+	private final PodcastService podcastService;
+
+	private final PublicationService publicationService;
+
+	private final MogulService mogulService;
 
 	private final Comparator<Publication> publicationComparator = ((Comparator<Publication>) (o1, o2) -> {
 		if (o1 != null && o2 != null) {
@@ -58,27 +58,26 @@ class PodcastEpisodeFeed {
 		}
 		return 0;
 	})//
-			.reversed();
+		.reversed();
 
-	PodcastEpisodeFeed(ManagedFileService managedFileService, PodcastService podcastService, PublicationService publicationService, MogulService mogulService) {
+	PodcastEpisodeFeed(ManagedFileService managedFileService, PodcastService podcastService,
+			PublicationService publicationService, MogulService mogulService) {
 		this.managedFileService = managedFileService;
 		this.podcastService = podcastService;
 		this.publicationService = publicationService;
 		this.mogulService = mogulService;
 	}
 
-
-	private final Logger log =  LoggerFactory.getLogger(getClass());
+	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	private SyndEntry entry(String mogulName, String publishedUrl, Episode episode) {
 
 		var se = new SyndEntryImpl();
-		
+
 		var sc = new SyndContentImpl();
 		sc.setType(MediaType.TEXT_PLAIN_VALUE);
 		sc.setValue(episode.description());
-		se.setDescription( sc );
-
+		se.setDescription(sc);
 
 		//
 		var customNs = Namespace.getNamespace("custom", "http://mycompany.com/customdata");
@@ -89,12 +88,11 @@ class PodcastEpisodeFeed {
 		correlationId.setText("ABC123");
 		metadata.addContent(correlationId);
 
-
 		// Add to entry
 		se.getForeignMarkup().add(metadata);
 		//
 
-		se.setUpdatedDate( episode.created());
+		se.setUpdatedDate(episode.created());
 		se.setPublishedDate(episode.created());
 		se.setAuthor(mogulName);
 		se.setTitle(episode.title());
@@ -117,8 +115,8 @@ class PodcastEpisodeFeed {
 		category.setName("a");
 		category.setLabel("b");
 		se.setCategories(List.of(category));
- 
-		return se; 
+
+		return se;
 	}
 
 	Feed podcastsFeed(long mogulId, long podcastId) {
@@ -130,15 +128,11 @@ class PodcastEpisodeFeed {
 		var syndFeed = new SyndFeedImpl();
 		syndFeed.setFeedType(FeedTemplate.FeedType.ATOM_0_3.value());
 		syndFeed.setTitle(podcast.title());
-		
+
 		var author = mogul.givenName() + " " + mogul.familyName();
 		syndFeed.setAuthor(author);
-		
 
-
-		
 		var entries = new ArrayList<SyndEntry>();
-		
 
 		var map = new HashMap<Long, String>();
 		for (var e : episodes) {
@@ -152,34 +146,31 @@ class PodcastEpisodeFeed {
 		for (var published : episodes.stream().filter(e -> map.containsKey(e.id())).toList()) {
 			System.out.println("published " + published);
 			var syndEntry = entry(author, map.get(published.id()), published);
-			
+
 			entries.add(syndEntry);
 		}
 
-
- 			
-		if (syndFeed.createWireFeed() instanceof Feed feed)
-		{
-			 log.info("we have a valid feed, so adding {} entries" , entries.size());
-			var es=entries.stream().map ( e-> (Entry)e.getWireEntry()).toList();
-			 feed. setEntries(  es);
+		if (syndFeed.createWireFeed() instanceof Feed feed) {
+			log.info("we have a valid feed, so adding {} entries", entries.size());
+			var es = entries.stream().map(e -> (Entry) e.getWireEntry()).toList();
+			feed.setEntries(es);
 			return feed;
 		}
-		
 
-		 throw new IllegalArgumentException("we should never get to this point!") ;
-		
+		throw new IllegalArgumentException("we should never get to this point!");
+
 	}
 
 	private String publicationUrl(Episode ep) {
-		var publications = this.publicationService.getPublicationsByPublicationKeyAndClass(ep.publicationKey(), Episode.class);
+		var publications = this.publicationService.getPublicationsByPublicationKeyAndClass(ep.publicationKey(),
+				Episode.class);
 		if (ep.complete() && !publications.isEmpty()) {
 			return publications//
-					.stream()//
-					.sorted(publicationComparator)//
-					.toList()
-					.getFirst()
-					.url();
+				.stream()//
+				.sorted(publicationComparator)//
+				.toList()
+				.getFirst()
+				.url();
 		}
 		return null;
 	}

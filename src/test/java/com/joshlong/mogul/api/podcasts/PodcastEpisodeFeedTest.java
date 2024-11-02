@@ -27,28 +27,27 @@ import static org.mockito.Mockito.when;
 
 class PodcastEpisodeFeedTest {
 
-    private final AtomicLong counter = new AtomicLong(0);
+	private final AtomicLong counter = new AtomicLong(0);
 
-    private ManagedFileService managedFileService;
+	private ManagedFileService managedFileService;
 
-    private PodcastService podcastService;
+	private PodcastService podcastService;
 
-    private MogulService mogulService;
+	private MogulService mogulService;
 
-    private PublicationService publicationService;
+	private PublicationService publicationService;
 
+	@BeforeEach
+	void setup() throws Exception {
+		publicationService = mock(PublicationService.class);
+		mogulService = mock(MogulService.class);
+		managedFileService = mock(ManagedFileService.class);
+		podcastService = mock(PodcastService.class);
+	}
 
-    @BeforeEach
-    void setup() throws Exception {
-        publicationService = mock(PublicationService.class);
-        mogulService = mock(MogulService.class);
-        managedFileService = mock(ManagedFileService.class);
-        podcastService = mock(PodcastService.class);
-    }
-
-    @Test
+	@Test
     void feed() throws Exception {
-        // setup 
+        // setup
 
 
         var mogulId = 1L;
@@ -79,7 +78,7 @@ class PodcastEpisodeFeedTest {
                     Episode.class)).thenReturn(List.of(new Publication(mogulId, counter.incrementAndGet(),
                     "mock", new Date(), new Date(), Map.of(), "", Episode.class,
                     "https://bootifulpodcast.fm/episodes/" + episode.id(), Publication.State.PUBLISHED)));
-        // 
+        //
         var feed = new PodcastEpisodeFeed(this.managedFileService, this.podcastService,
                 this.publicationService, this.mogulService);
         var syndFeed = feed.podcastsFeed(1, 1);
@@ -88,47 +87,41 @@ class PodcastEpisodeFeedTest {
                 "the syndfeed is not null");
 
 
-         
 
-        // 
+
+        //
         var syndOuput = new WireFeedOutput();
         var outputString = syndOuput.outputString(syndFeed  );
         System.out.println(outputString);
 
     }
 
-    private Episode nextEpisode(long mogulId, long podcastId) throws Exception {
-        var nextId = counter.incrementAndGet();
-        var producedAudio = nextManagedFile(mogulId, true,
-                CommonMediaTypes.MP3.toString());
-        var graphic = nextManagedFile(mogulId, true,
-                MediaType.IMAGE_JPEG_VALUE);
-        var producedGraphic = nextManagedFile(mogulId, true,
-                MediaType.IMAGE_JPEG_VALUE);
-        return new Episode(nextId,
-                podcastId, "the title for episode " + nextId,
-                "the description for episode " + nextId, new Date(),
-                graphic, producedGraphic, producedAudio, true,
-                new Date(), new Date()
-        );
-    }
+	private Episode nextEpisode(long mogulId, long podcastId) throws Exception {
+		var nextId = counter.incrementAndGet();
+		var producedAudio = nextManagedFile(mogulId, true, CommonMediaTypes.MP3.toString());
+		var graphic = nextManagedFile(mogulId, true, MediaType.IMAGE_JPEG_VALUE);
+		var producedGraphic = nextManagedFile(mogulId, true, MediaType.IMAGE_JPEG_VALUE);
+		return new Episode(nextId, podcastId, "the title for episode " + nextId,
+				"the description for episode " + nextId, new Date(), graphic, producedGraphic, producedAudio, true,
+				new Date(), new Date());
+	}
 
-    private ManagedFile nextManagedFile(long mogulId, boolean visible, String contentType) throws Exception {
-        var mf = Mockito.mock(ManagedFile.class);
-        when(mf.id()).thenReturn(counter.incrementAndGet());
-        when(mf.bucket()).thenReturn("bucket");
-        when(mf.filename()).thenReturn("filename");
-        when(mf.folder()).thenReturn("folder");
-        when(mf.contentType()).thenReturn(contentType);
-        when(mf.mogulId()).thenReturn(mogulId);
-        when(mf.storageFilename()).thenReturn("storageFilename." +
-                contentType.split("/")[1]);
-        when(mf.visible()).thenReturn(visible);
-        when(mf.created()).thenReturn(new Date());
-        when(mf.size()).thenReturn(100L);
-        var file = File.createTempFile("test", "");
-        file.deleteOnExit();
-        when(mf.uniqueLocalFile()).thenReturn(file);
-        return mf;
-    }
+	private ManagedFile nextManagedFile(long mogulId, boolean visible, String contentType) throws Exception {
+		var mf = Mockito.mock(ManagedFile.class);
+		when(mf.id()).thenReturn(counter.incrementAndGet());
+		when(mf.bucket()).thenReturn("bucket");
+		when(mf.filename()).thenReturn("filename");
+		when(mf.folder()).thenReturn("folder");
+		when(mf.contentType()).thenReturn(contentType);
+		when(mf.mogulId()).thenReturn(mogulId);
+		when(mf.storageFilename()).thenReturn("storageFilename." + contentType.split("/")[1]);
+		when(mf.visible()).thenReturn(visible);
+		when(mf.created()).thenReturn(new Date());
+		when(mf.size()).thenReturn(100L);
+		var file = File.createTempFile("test", "");
+		file.deleteOnExit();
+		when(mf.uniqueLocalFile()).thenReturn(file);
+		return mf;
+	}
+
 }
