@@ -20,56 +20,61 @@ import java.util.Collection;
 import java.util.Map;
 
 /**
- * adapter to create ATOM 1.0 compliant feeds.
+ * Adapter to create ATOM 1.0-compliant and public feeds for content in Mogul.
  *
  * @author Josh Long
  */
 @Component
 public class Feeds {
 
-	private static final String MOGUL_FEEDS_NS = "http://api.media-mogul.io/public/feeds";
+	private static final String MOGUL_FEEDS_NS = "http://api.media-mogul.io";
 
 	private static final String MOGUL_FEEDS_ELEMENT_PREFIX = "mogul-feeds";
 
 	public <T> String createMogulAtomFeed(String feedTitle, String feedUrl, Instant published, String feedAuthor,
 			String feedId, Collection<T> entries, EntryMapper<T> entryMapper)
 			throws TransformerException, IOException, ParserConfigurationException {
+
 		var docFactory = DocumentBuilderFactory.newInstance();
 		docFactory.setNamespaceAware(true);
+
 		var docBuilder = docFactory.newDocumentBuilder();
 		var doc = docBuilder.newDocument();
 
-		var feedElement = doc.createElementNS("http://www.w3.org/2005/Atom", "feed");
+		var atomNamespace = "http://www.w3.org/2005/Atom";
+
+		var feedElement = doc.createElementNS(atomNamespace, "feed");
+		feedElement.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:mogul-feeds", MOGUL_FEEDS_NS);
 		doc.appendChild(feedElement);
 
-		feedElement.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:mogul-feeds", MOGUL_FEEDS_NS);
-
-		var title = doc.createElementNS("http://www.w3.org/2005/Atom", "title");
+		var title = doc.createElementNS(atomNamespace, "title");
 		title.setTextContent(feedTitle);
 		feedElement.appendChild(title);
 
-		var link = doc.createElementNS("http://www.w3.org/2005/Atom", "link");
-		link.setAttribute("href", feedUrl);
-		feedElement.appendChild(link);
+		var self = doc.createElementNS(atomNamespace, "link");
+		self.setAttribute("rel", "self");
+		self.setAttribute("href", feedUrl);
+		feedElement.appendChild(self);
 
-		var updated = doc.createElementNS("http://www.w3.org/2005/Atom", "updated");
+		var updated = doc.createElementNS(atomNamespace, "updated");
 		var publishedString = formatInstant(published);
 		updated.setTextContent(publishedString);
 		feedElement.appendChild(updated);
 
-		var author = doc.createElementNS("http://www.w3.org/2005/Atom", "author");
-		var authorName = doc.createElementNS("http://www.w3.org/2005/Atom", "name");
+		var author = doc.createElementNS(atomNamespace, "author");
+		var authorName = doc.createElementNS(atomNamespace, "name");
 		authorName.setTextContent(feedAuthor);
 		author.appendChild(authorName);
 		feedElement.appendChild(author);
 
-		var id = doc.createElementNS("http://www.w3.org/2005/Atom", "id");
+		var id = doc.createElementNS(atomNamespace, "id");
 		id.setTextContent("urn:uuid:" + feedId);
 		feedElement.appendChild(id);
 		entries.forEach(entry -> {
 			try {
 				var entryObj = entryMapper.map(entry);
-				var entryElement = createEntry(doc, entryObj.id(), entryObj.updated(), entryObj.title(), entryObj.url(),
+				var entryElement = createEntry(doc, entryObj.id(), entryObj.updated(), entryObj.image().url(),
+						entryObj.image().contentType(), entryObj.image().length(), entryObj.title(), entryObj.url(),
 						entryObj.summary(), entryObj.metadata());
 				feedElement.appendChild(entryElement);
 			} //
@@ -96,10 +101,18 @@ public class Feeds {
 		return DateTimeFormatter.ISO_INSTANT.format(instant.truncatedTo(ChronoUnit.SECONDS));
 	}
 
-	private static Element createEntry(Document doc, String entryId, Instant updatedInstant, String titleTxt,
-			String entryUrl, String summaryText, Map<String, String> customMetadataMap)
-			throws ParserConfigurationException {
+	private static Element createEntry(Document doc, String entryId, Instant updatedInstant, String imageUrl,
+			String imageContentType, long thumbnailSize, String titleTxt, String entryUrl, String summaryText,
+			Map<String, String> customMetadataMap) throws ParserConfigurationException {
 		var entry = doc.createElementNS("http://www.w3.org/2005/Atom", "entry");
+
+		var enclosure = doc.createElementNS("http://www.w3.org/2005/Atom", "link");
+		enclosure.setAttribute("rel", "enclosure");
+		enclosure.setAttribute("type", imageContentType);
+		enclosure.setAttribute("href", imageUrl);
+		enclosure.setAttribute("title", "Thumbnail");
+		enclosure.setAttribute("length", Long.toString(thumbnailSize));
+		entry.appendChild(enclosure);
 
 		// Add entry elements
 		var title = doc.createElementNS("http://www.w3.org/2005/Atom", "title");
@@ -108,6 +121,7 @@ public class Feeds {
 
 		var link = doc.createElementNS("http://www.w3.org/2005/Atom", "link");
 		link.setAttribute("href", entryUrl);
+		// link.setAttribute("rel", "self");
 		entry.appendChild(link);
 
 		var id = doc.createElementNS("http://www.w3.org/2005/Atom", "id");
