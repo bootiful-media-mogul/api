@@ -7,8 +7,6 @@ import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.mogul.Mogul;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.publications.PublicationService;
-import com.rometools.rome.io.SyndFeedOutput;
-import com.rometools.rome.io.WireFeedOutput;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -85,14 +83,8 @@ class PodcastEpisodeFeedTest {
 
         Assertions.assertNotNull(syndFeed,
                 "the syndfeed is not null");
-
-
-
-
-        //
-        var syndOuput = new WireFeedOutput();
-        var outputString = syndOuput.outputString(syndFeed  );
-        System.out.println(outputString);
+		
+		System.out.println(syndFeed);
 
     }
 
