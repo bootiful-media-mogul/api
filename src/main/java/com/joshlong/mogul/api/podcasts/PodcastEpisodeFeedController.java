@@ -1,31 +1,30 @@
 package com.joshlong.mogul.api.podcasts;
 
 import com.joshlong.feed.FeedTemplate;
-import com.joshlong.feed.SyndEntryMapper;
 import com.joshlong.mogul.api.Publication;
-
 import com.joshlong.mogul.api.managedfiles.ManagedFileService;
+import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.publications.PublicationService;
-import com.joshlong.templates.MarkdownService;
-import com.rometools.rome.feed.synd.SyndContentImpl;
-import com.rometools.rome.feed.synd.SyndEntry;
-import com.rometools.rome.feed.synd.SyndEntryImpl;
-import com.rometools.rome.feed.synd.SyndLinkImpl;
+import com.rometools.rome.feed.WireFeed;
+import com.rometools.rome.feed.atom.Content;
+import com.rometools.rome.feed.atom.Entry;
+import com.rometools.rome.feed.atom.Feed;
+import com.rometools.rome.feed.synd.*;
+import org.jdom2.Element;
+import org.jdom2.Namespace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.ResponseBody;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 
 @Controller
 @ResponseBody
@@ -33,17 +32,22 @@ class PodcastEpisodeFeedController {
 
 	private static final String PODCAST_FEED_URL = "/public/feeds/moguls/{mogulId}/podcasts/{podcastId}/episodes.atom";
 
-	private final Logger log = LoggerFactory.getLogger(getClass());
+	@GetMapping(PODCAST_FEED_URL)
+	String feed() {
+		return "hello world!";
+	}
+}
 
+
+class PodcastEpisodeFeed {
+
+
+	
 	private final ManagedFileService managedFileService;
-
-	private final FeedTemplate template;
-
 	private final PodcastService podcastService;
-
 	private final PublicationService publicationService;
+	private final MogulService mogulService;
 
-	private final MarkdownService markdownService;
 
 	private final Comparator<Publication> publicationComparator = ((Comparator<Publication>) (o1, o2) -> {
 		if (o1 != null && o2 != null) {
@@ -54,41 +58,88 @@ class PodcastEpisodeFeedController {
 		}
 		return 0;
 	})//
-		.reversed();
+			.reversed();
 
-	PodcastEpisodeFeedController(ManagedFileService managedFileService, FeedTemplate template,
-			PodcastService podcastService, PublicationService publicationService, MarkdownService markdownService) {
+	PodcastEpisodeFeed(ManagedFileService managedFileService, PodcastService podcastService, PublicationService publicationService, MogulService mogulService) {
 		this.managedFileService = managedFileService;
-		this.template = template;
 		this.podcastService = podcastService;
 		this.publicationService = publicationService;
-		this.markdownService = markdownService;
+		this.mogulService = mogulService;
 	}
 
-	@GetMapping(PODCAST_FEED_URL)
-	ResponseEntity<String> podcastsFeed(@PathVariable long mogulId, @PathVariable long podcastId) {
 
+	private final Logger log =  LoggerFactory.getLogger(getClass());
+
+	private SyndEntry entry(String mogulName, String publishedUrl, Episode episode) {
+
+		var se = new SyndEntryImpl();
+		
+		var sc = new SyndContentImpl();
+		sc.setType(MediaType.TEXT_PLAIN_VALUE);
+		sc.setValue(episode.description());
+		se.setDescription( sc );
+
+
+		//
+		var customNs = Namespace.getNamespace("custom", "http://mycompany.com/customdata");
+
+		// Create elements
+		var metadata = new Element("metadata", customNs);
+		Element correlationId = new Element("correlationId", customNs);
+		correlationId.setText("ABC123");
+		metadata.addContent(correlationId);
+
+
+		// Add to entry
+		se.getForeignMarkup().add(metadata);
+		//
+
+		se.setUpdatedDate( episode.created());
+		se.setPublishedDate(episode.created());
+		se.setAuthor(mogulName);
+		se.setTitle(episode.title());
+		se.setUri(publishedUrl);
+		var description = new Content();
+		description.setType(MediaType.TEXT_PLAIN_VALUE);
+		description.setValue(episode.description());
+
+		var graphicId = episode.producedGraphic().id();
+		var url = "/api" + managedFileService.getPublicUrlForManagedFile(graphicId);
+
+		var image = new SyndLinkImpl();
+		image.setHref(url);
+		image.setRel("enclosure");
+		image.setType(episode.graphic().contentType());
+
+		se.getLinks().add(image);
+
+		var category = new SyndCategoryImpl();
+		category.setName("a");
+		category.setLabel("b");
+		se.setCategories(List.of(category));
+ 
+		return se; 
+	}
+
+	Feed podcastsFeed(long mogulId, long podcastId) {
+
+		var mogul = this.mogulService.getMogulById(mogulId);
 		var podcast = this.podcastService.getPodcastById(podcastId);
 		var episodes = this.podcastService.getPodcastEpisodesByPodcast(podcastId);
-		Assert.state(podcast.mogulId().equals(mogulId), "the mogulId must match");
 
-		// todo might want to extract this out to a generic thing as we start to expose
-		// more and more feeds across the project.
-		// todo we also need to make sure we do the right thing around the global URI
-		// namespace, too.
+		var syndFeed = new SyndFeedImpl();
+		syndFeed.setFeedType(FeedTemplate.FeedType.ATOM_0_3.value());
+		syndFeed.setTitle(podcast.title());
+		
+		var author = mogul.givenName() + " " + mogul.familyName();
+		syndFeed.setAuthor(author);
+		
 
-		var params = Map.of("mogulId", mogulId, "podcastId", podcastId);
-		var ns = PODCAST_FEED_URL;
-		for (var k : params.keySet()) {
-			var v = params.get(k);
-			this.log.debug("the following parameter was found: {}={}", k, v);
-			var find = "{" + k + "}";
-			if (ns.contains(find)) {
-				ns = ns.replace(find, v.toString());
-			}
-		}
 
-		var title = podcast.title();
+		
+		var entries = new ArrayList<SyndEntry>();
+		
+
 		var map = new HashMap<Long, String>();
 		for (var e : episodes) {
 			var publicationUrl = publicationUrl(e);
@@ -96,77 +147,41 @@ class PodcastEpisodeFeedController {
 				map.put(e.id(), publicationUrl);
 			}
 		}
-		var publishedEpisodes = episodes.stream().filter(ep -> map.containsKey(ep.id())).toList();
-		var syndEntryMapper = new EpisodeSyndEntryMapper(map);
-		var feed = this.template.buildFeed(FeedTemplate.FeedType.ATOM_0_3, title, ns, title, publishedEpisodes,
-				syndEntryMapper);
-		var render = this.template.render(feed);
-		return ResponseEntity//
-			.status(HttpStatusCode.valueOf(200))//
-			.contentType(MediaType.APPLICATION_ATOM_XML)//
-			.body(render);
+		System.out.println("map " + map);
+
+		for (var published : episodes.stream().filter(e -> map.containsKey(e.id())).toList()) {
+			System.out.println("published " + published);
+			var syndEntry = entry(author, map.get(published.id()), published);
+			
+			entries.add(syndEntry);
+		}
+
+
+ 			
+		if (syndFeed.createWireFeed() instanceof Feed feed)
+		{
+			 log.info("we have a valid feed, so adding {} entries" , entries.size());
+			var es=entries.stream().map ( e-> (Entry)e.getWireEntry()).toList();
+			 feed. setEntries(  es);
+			return feed;
+		}
+		
+
+		 throw new IllegalArgumentException("we should never get to this point!") ;
+		
 	}
 
 	private String publicationUrl(Episode ep) {
-		var publications = this.publicationService.getPublicationsByPublicationKeyAndClass(ep.publicationKey(),
-				Episode.class);
+		var publications = this.publicationService.getPublicationsByPublicationKeyAndClass(ep.publicationKey(), Episode.class);
 		if (ep.complete() && !publications.isEmpty()) {
-
 			return publications//
-				.stream()//
-				.sorted(publicationComparator)//
-				.toList()
-				.getFirst()
-				.url();
+					.stream()//
+					.sorted(publicationComparator)//
+					.toList()
+					.getFirst()
+					.url();
 		}
 		return null;
-	}
-
-	private class EpisodeSyndEntryMapper implements SyndEntryMapper<Episode> {
-
-		private final Map<Long, String> urls;
-
-		EpisodeSyndEntryMapper(Map<Long, String> urls) {
-			this.urls = urls;
-		}
-
-		@Override
-		public SyndEntry map(Episode episode) throws Exception {
-			var entry = new SyndEntryImpl();
-			entry.setTitle(episode.title());
-			entry.setLink(urls.get(episode.id()));
-			entry.setPublishedDate(episode.created());
-
-			var description = new SyndContentImpl();
-			description.setType(MediaType.TEXT_PLAIN_VALUE);
-			description.setValue(episode.description());
-
-			var graphicId = episode.producedGraphic().id();
-			var url = "/api" + managedFileService.getPublicUrlForManagedFile(graphicId);
-
-			var image = new SyndLinkImpl();
-			image.setHref(url);
-			image.setRel("enclosure");
-			image.setType(episode.graphic().contentType());
-			entry.getLinks().add(image);
-
-			entry.setDescription(description);
-			return entry;
-
-		}
-
-		// todo assess whether we can/should encode the description in HTML or if it's
-		// sufficient to send along the plaintext and let the clients sort it out.
-		private String markdownDescription(String description) {
-			try {
-				return markdownService.convertMarkdownTemplateToHtml(description);
-			}
-			catch (Throwable throwable) {
-				log.warn("couldn't transcode the following " + "string into Markdown: {}", description + "");
-			}
-			return description;
-		}
-
 	}
 
 }
