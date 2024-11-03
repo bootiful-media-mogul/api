@@ -3,10 +3,13 @@ package com.joshlong.mogul.api.managedfiles;
 import com.joshlong.mogul.api.utils.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
@@ -16,6 +19,12 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.Assert;
 import org.springframework.util.FileCopyUtils;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
+import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
+import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -47,6 +56,43 @@ import java.util.stream.Collectors;
  * right before committing , we do one big query for all the managed files and then give
  * the data to each placeholder object, fleshing them out, in effect.
  */
+
+class TemporaryVisibilityMigration {
+
+	void migrateBucket(S3Client s3Client, String sourceBucket, String targetBucket, String key, Region region) {
+
+
+		// First, create the new bucket if it doesn't exist
+		if (!this.bucketExists(s3Client, targetBucket)) {
+			var createBucketRequest = CreateBucketRequest.builder()
+					.bucket(targetBucket)
+					.build();
+			s3Client.createBucket(createBucketRequest);
+			System.out.println("Created target bucket: " + targetBucket);
+		}
+
+		var copyRequest = CopyObjectRequest.builder()
+				.sourceBucket(sourceBucket)
+				.sourceKey(key)
+				.destinationBucket(targetBucket)
+				.destinationKey(key)
+				.build();
+		s3Client.copyObject(copyRequest);
+
+	}
+
+	private boolean bucketExists(S3Client s3, String bucketName) {
+		try {
+			s3.headBucket(HeadBucketRequest.builder()
+					.bucket(bucketName)
+					.build());
+			return true;
+		}// 
+		catch (S3Exception e) {
+			return false;
+		}
+	}
+}
 @Service
 class DefaultManagedFileService implements ManagedFileService {
 
@@ -64,12 +110,52 @@ class DefaultManagedFileService implements ManagedFileService {
 
 	private final TransactionTemplate transactionTemplate;
 
+	// todo delete the variable s3 it's only to support the migration! 
+	private final S3Client s3;
+
+	// todo delete this method its only here to support the migration! 
+	@EventListener
+	void migrateEverything(ApplicationReadyEvent readyEvent) throws Exception {
+
+		var temporaryVisibilityMigration = new TemporaryVisibilityMigration();
+
+		record DumbManagedFile(long id, String bucket, String folder, String storageFilename) {
+		}
+
+		class DumbManagedFileRowMapper implements RowMapper<DumbManagedFile> {
+
+			@Override
+			public DumbManagedFile mapRow(ResultSet rs, int rowNum) throws SQLException {
+				return new DumbManagedFile(
+						rs.getLong("id"),
+						rs.getString("bucket"),
+						rs.getString("folder"),
+						rs.getString("storage_filename")
+				);
+			}
+		}
+
+		this.db.sql("select * from managed_file where visible = true")
+				.query(new DumbManagedFileRowMapper())
+				.stream()
+				.forEach(dmf -> {
+					var visibleBucket = visibleBucketFor(dmf.bucket());
+					var sourceBucket = dmf.bucket();
+					var fqn = fqn(dmf.folder(), dmf.storageFilename());
+					temporaryVisibilityMigration.migrateBucket(this.s3, sourceBucket,
+							visibleBucket, fqn, Region.US_EAST_1);
+				});
+	}
+	
 	DefaultManagedFileService(JdbcClient db, Storage storage, ApplicationEventPublisher publisher,
-			TransactionTemplate transactionTemplate) {
+							  TransactionTemplate transactionTemplate,
+							  // todo delete the variable s3 it's only to support the migration! 
+							  S3Client s3) {
 		this.db = db;
 		this.storage = storage;
 		this.publisher = publisher;
 		this.transactionTemplate = transactionTemplate;
+		this.s3 = s3; // todo delete the variable s3 it's only to support the migration! 
 	}
 
 	@Override
