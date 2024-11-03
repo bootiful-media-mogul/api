@@ -460,6 +460,7 @@ class DefaultPodcastService implements PodcastService {
 	public Episode createPodcastEpisodeDraft(Long currentMogulId, Long podcastId, String title, String description) {
 		this.ensurePodcastBelongsToMogul(currentMogulId, podcastId);
 		var uid = UUID.randomUUID().toString();
+		// todo we should check for collisions...
 		var bucket = PodcastService.PODCAST_EPISODES_BUCKET;
 		// these images should probably be publicly visible by default... everything else,
 		// no.

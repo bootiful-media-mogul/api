@@ -94,8 +94,8 @@ class Storage {
 			var largeFile = DataSize.ofMegabytes(10);
 			log.info("started executing an S3 PUT for [{}/{}] on thread [{}]", bucket, objectName,
 					Thread.currentThread());
-			ensureBucketExists(bucket);
-			doWriteForLargeFiles(bucket, objectName, resource, largeFile);
+			this.ensureBucketExists(bucket);
+			this.doWriteForLargeFiles(bucket, objectName, resource, largeFile);
 		} //
 		catch (Throwable throwable) {
 			throw new RuntimeException(throwable);
@@ -109,21 +109,6 @@ class Storage {
 			return buckets.buckets().stream().anyMatch(bucket -> bucket.name().equalsIgnoreCase(bucketName));
 		}
 		return false;
-	}
-
-	private void ensureBucketExists(String bucketName) {
-		try {
-			if (!bucketExists(bucketName)) {
-				this.log.info("attempting to create the bucket called [{}]", bucketName);
-				this.s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
-			}
-			else {
-				this.log.trace("the bucket named [{}] already exists", bucketName);
-			}
-		} //
-		catch (Throwable throwable) {
-			throw new RuntimeException(throwable);
-		}
 	}
 
 	public Resource read(String bucket, String objectName) {
@@ -141,6 +126,15 @@ class Storage {
 	private static void validUri(URI uri) {
 		Assert.state(uri != null && uri.getScheme().equalsIgnoreCase("s3") && uri.getPath().split("/").length == 2,
 				"this uri [" + Objects.requireNonNull(uri) + "] is not a valid s3 reference");
+	}
+
+	private void ensureBucketExists(String bucketName) {
+		if (bucketExists(bucketName)) {
+			this.log.trace("the bucket named [{}] already exists", bucketName);
+			return;
+		}
+		this.log.info("attempting to create the bucket called [{}]", bucketName);
+		this.s3.createBucket(CreateBucketRequest.builder().bucket(bucketName).build());
 	}
 
 }

@@ -79,6 +79,7 @@ class DefaultManagedFileService implements ManagedFileService {
 
 	@Override
 	public String getPublicUrlForManagedFile(Long managedFile) {
+		// todo refactor this to work with cloudfront
 		var mf = getManagedFile(managedFile);
 		var url = "/public/managedfiles/" + mf.id();
 		return (mf.visible()) ? url : null;
@@ -91,12 +92,38 @@ class DefaultManagedFileService implements ManagedFileService {
 		return managedFile;
 	}
 
+	/**
+	 * meant to make sure we've synchronized the file write
+	 */
+
+	private void ensureVisibility(ManagedFile managedFile) {
+		// todo should we do this on a thread? or launch it as a part of an
+		// ApplicationEvent that runs asynchronously?
+		// most of the time when we do writes, the writes will come from the http client,
+		// so we'll only get one crack at the apple.
+		// let's make sure its written to the main s3 bucket and then, if need be, well
+		// copy it from that to this visible bucket.
+		// do NOT read from the HTTP clients inputstream
+		var visibleBucket = managedFile.visibleBucket();
+		var folder = managedFile.folder();
+		var fn = managedFile.storageFilename();
+		var fqn = fqn(folder, fn);
+		if (managedFile.visible()) {
+			var resource = this.storage.read(managedFile.bucket(), fqn);
+			this.storage.write(visibleBucket, fqn, resource);
+		} //
+		else {
+			this.storage.remove(visibleBucket, fqn);
+		}
+	}
+
 	@Override
 	public void write(Long managedFileId, String filename, MediaType mediaType, Resource resource) {
 		var managedFile = this.forceReadManagedFile(managedFileId);
 		var bucket = managedFile.bucket();
 		var folder = managedFile.folder();
-		this.storage.write(bucket, folder + '/' + managedFile.storageFilename(), resource);
+		this.storage.write(bucket, fqn(folder, managedFile.storageFilename()), resource);
+		this.ensureVisibility(managedFile);
 		var clientMediaType = mediaType == null ? CommonMediaTypes.BINARY : mediaType;
 		this.db.sql("update managed_file set filename =?, content_type =? , written = true , size =? where id=?")
 			.params(filename, clientMediaType.toString(), contentLength(resource), managedFileId)
@@ -125,7 +152,7 @@ class DefaultManagedFileService implements ManagedFileService {
 		var resource = this.read(managedFile.id());
 		var tmp = FileUtils.tempFileWithExtension();
 		try {
-			try (var in = (resource.getInputStream()); var out = (new FileOutputStream(tmp))) {
+			try (var in = resource.getInputStream(); var out = new FileOutputStream(tmp)) {
 				log.debug("starting download to local file [{}]", tmp.getAbsolutePath());
 				FileCopyUtils.copy(in, out);
 				log.debug("finished download to local file [{}]", tmp.getAbsolutePath());
@@ -154,20 +181,26 @@ class DefaultManagedFileService implements ManagedFileService {
 
 	@Override
 	public Collection<ManagedFileDeletionRequest> getOutstandingManagedFileDeletionRequests() {
-
 		return this.db//
 			.sql("select * from managed_file_deletion_request where deleted = false")//
 			.query(this.managedFileDeletionRequestRowMapper)//
 			.list();
 	}
 
+	static String visibleBucketFor(String bucket) {
+		return bucket + "-visible";
+	}
+
 	@Override
 	public void completeManagedFileDeletion(Long managedFileDeletionRequestId) {
 		var managedFileDeletionRequest = this.getManagedFileDeletionRequest(managedFileDeletionRequestId);
 		Assert.notNull(managedFileDeletionRequest, "the managed file deletion request should not be null");
-		storage.remove(managedFileDeletionRequest.bucket(),
-				managedFileDeletionRequest.folder() + '/' + managedFileDeletionRequest.storageFilename());
-		this.db.sql(" update  managed_file_deletion_request  set deleted = true where id = ? ")
+		var fqn = fqn(managedFileDeletionRequest.folder(), managedFileDeletionRequest.storageFilename());
+		for (var bucket : new String[] { managedFileDeletionRequest.bucket(),
+				managedFileDeletionRequest.visibleBucket() }) {
+			this.storage.remove(bucket, fqn);
+		}
+		this.db.sql(" update managed_file_deletion_request set deleted = true where id = ? ")
 			.param(managedFileDeletionRequestId)
 			.update();
 	}
@@ -178,7 +211,7 @@ class DefaultManagedFileService implements ManagedFileService {
 		var managedFile = this.getManagedFile(managedFileId);
 		// very important that we do this part FIRST since the calls to mogulId will
 		// lazily trigger the loading of the managed_file, which will be deleted if we
-		// waited unti after the next line
+		// waited until after the next line
 		this.db.sql(
 				"insert into managed_file_deletion_request ( mogul , bucket, folder, filename ,storage_filename) values(?,?,?,?,?)")
 			.params(managedFile.mogulId(), //
@@ -192,12 +225,18 @@ class DefaultManagedFileService implements ManagedFileService {
 		this.publisher.publishEvent(new ManagedFileDeletedEvent(managedFile));
 	}
 
+	private static String fqn(String folder, String filename) {
+		return folder + '/' + filename;
+	}
+
 	@Override
 	public Resource read(Long managedFileId) {
 		// the call to getManagedFile needs to be in a transaction. the reading of bytes
-		// most assuredly does not.
+		// does not.
 		var mf = this.transactionTemplate.execute(status -> this.getManagedFile(managedFileId));
-		return this.storage.read(mf.bucket(), mf.folder() + '/' + mf.storageFilename());
+		var fn = fqn(mf.folder(), mf.storageFilename());
+		var bucket = mf.visible() ? mf.visibleBucket() : mf.bucket();
+		return this.storage.read(bucket, fn);
 	}
 
 	private long contentLength(Resource resource) {

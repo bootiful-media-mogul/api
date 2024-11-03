@@ -6,12 +6,13 @@ import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 import java.io.File;
-import java.net.URI;
 import java.util.Date;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+
+import static com.joshlong.mogul.api.managedfiles.DefaultManagedFileService.visibleBucketFor;
 
 /**
  * represents a persistent, managed file stored on cloud storage
@@ -51,6 +52,19 @@ public class ManagedFile {
 		this.hydration = hydration;
 		Assert.notNull(this.hydration, "the hydration function should not be null");
 	}
+
+	// what fields are unique to S3?
+	// looks like we use the following to read a MF from S3
+	// could we keep the storage filename the same across public and regular buckets?
+	// so we'd only need to change the bucket, really. keep the same folder and
+	// storageFilename
+	// return this.storage.read(mf.bucket(), mf.folder() + '/' + mf.storageFilename());
+	// maybe we could have some sort of convention where we automatically infer the bucket
+	// based on whether its public or not?
+	// `bucket` or `bucket`-public?
+	// if so then we are saying that all ManagedFiles are privat by default, but can be
+	// made public. i think this is a worthy idea...
+	// let's try it.
 
 	// private implementation detail
 	void hydrate(Long mogulId, Long id, String bucket, String storageFilename, String folder, String filename,
@@ -95,6 +109,12 @@ public class ManagedFile {
 	public String bucket() {
 		this.ensureInitialized();
 		return bucket.get();
+	}
+
+	@JsonProperty("visibleBucket")
+	public String visibleBucket() {
+		this.ensureInitialized();
+		return visibleBucketFor(this.bucket());
 	}
 
 	@JsonProperty("storageFilename")
@@ -166,8 +186,7 @@ public class ManagedFile {
 
 	@Override
 	public int hashCode() {
-		return Objects.hash(this.id());// mogulId, id, bucket, storageFilename, folder,
-										// filename, created, written, size, contentType);
+		return Objects.hash(this.id());
 	}
 
 	public File uniqueLocalFile() {
@@ -179,10 +198,6 @@ public class ManagedFile {
 				extension = extension.substring(1);
 		}
 		return FileUtils.tempFile("managed-files-" + id, extension);
-	}
-
-	public URI s3Uri() {
-		return URI.create("s3://" + this.bucket() + "/" + this.folder() + '/' + this.storageFilename());
 	}
 
 }
