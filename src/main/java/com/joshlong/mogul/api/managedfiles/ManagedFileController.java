@@ -53,33 +53,33 @@ class ManagedFileController {
 
 	@GetMapping(PUBLIC_MF_URL)
 	@ResponseBody
-	ResponseEntity<Resource> readPublic(@PathVariable Long id) throws Exception {
+	ResponseEntity<Resource> readPublic(@PathVariable Long id) {
 		return doRead(true, id);
 	}
 
 	@GetMapping(MF_RW_URL)
 	@ResponseBody
-	ResponseEntity<Resource> read(@PathVariable Long id) throws Exception {
+	ResponseEntity<Resource> read(@PathVariable Long id) {
 		return doRead(false, id);
 	}
 
 	private ResponseEntity<Resource> doRead(boolean assertVisible, Long id) {
 		Assert.notNull(id, "the managed file id is null");
-		var mf = managedFileService.getManagedFile(id);
-		Assert.notNull(mf, "the managed file does not exist [" + id + "]");
+		var managedFile = this.managedFileService.getManagedFile(id);
+		Assert.notNull(managedFile, "the managed file does not exist [" + id + "]");
 		if (assertVisible) {
-			if (!mf.visible()) {
+			if (!managedFile.visible()) {
 				this.log.warn(
 						"someone is attempting to read " + "managed file #{} even though it's not visible publicly",
-						mf.id());
+						managedFile.id());
 				return ResponseEntity.notFound().build();
 			}
 		}
 		var read = this.managedFileService.read(id);
-		var contentType = mf.contentType();
+		var contentType = managedFile.contentType();
 		this.log.debug("content-type: {}", contentType);
 		return ResponseEntity.ok()
-			.contentLength(mf.size())
+			.contentLength(managedFile.size())
 			.contentType(MediaType.parseMediaType(contentType))
 			.body(read);
 	}
