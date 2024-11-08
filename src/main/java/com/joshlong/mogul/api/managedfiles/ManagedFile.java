@@ -62,7 +62,7 @@ public class ManagedFile {
 	// maybe we could have some sort of convention where we automatically infer the bucket
 	// based on whether its public or not?
 	// `bucket` or `bucket`-public?
-	// if so then we are saying that all ManagedFiles are privat by default, but can be
+	// if so then we are saying that all ManagedFiles are private by default, but can be
 	// made public. i think this is a worthy idea...
 	// let's try it.
 
@@ -97,18 +97,18 @@ public class ManagedFile {
 	@JsonProperty("mogulId")
 	public Long mogulId() {
 		this.ensureInitialized();
-		return mogulId.get();
+		return this.mogulId.get();
 	}
 
 	@JsonProperty("id")
 	public Long id() {
-		return id.get();
+		return this.id.get();
 	}
 
 	@JsonProperty("bucket")
 	public String bucket() {
 		this.ensureInitialized();
-		return bucket.get();
+		return this.bucket.get();
 	}
 
 	@JsonProperty("visibleBucket")
@@ -120,7 +120,7 @@ public class ManagedFile {
 	@JsonProperty("storageFilename")
 	public String storageFilename() {
 		this.ensureInitialized();
-		return storageFilename.get();
+		return this.storageFilename.get();
 	}
 
 	@JsonProperty("folder")
@@ -167,11 +167,11 @@ public class ManagedFile {
 
 	@Override
 	public String toString() {
-		return "ManagedFile{" + "mogulId=" + mogulId.get() + ", id=" + id.get() + ", bucket='" + bucket.get() + '\''
-				+ ", storageFilename='" + storageFilename.get() + +'\'' + ", folder='" + folder.get() + '\''
-				+ ", filename='" + filename.get() + '\'' + ", created=" + created.get() + ", written=" + written.get()
-				+ "," + ", visible=" + visible.get() + "," + " size=" + size.get() + ", contentType='"
-				+ contentType.get() + '\'' + '}';
+		return "ManagedFile{" + "mogulId=" + this.mogulId.get() + ", id=" + this.id.get() + ", bucket='"
+				+ this.bucket.get() + '\'' + ", storageFilename='" + this.storageFilename.get() + +'\'' + ", folder='"
+				+ this.folder.get() + '\'' + ", filename='" + this.filename.get() + '\'' + ", created="
+				+ this.created.get() + ", written=" + this.written.get() + "," + ", visible=" + this.visible.get() + ","
+				+ " size=" + this.size.get() + ", contentType='" + this.contentType.get() + '\'' + '}';
 	}
 
 	@Override
