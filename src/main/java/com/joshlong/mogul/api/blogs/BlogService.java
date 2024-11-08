@@ -8,9 +8,13 @@ import java.util.Set;
 public interface BlogService {
 
 	// blog
-	Blog createBlog(Long mogulId, String title);
+	Blog createBlog(Long mogulId, String title, String description);
+
+	Blog updateBlog(Long mogulId, String title, String description);
 
 	Blog getBlogById(Long id);
+
+	Post getPostById(Long id);
 
 	void deleteBlog(Long id);
 
@@ -18,10 +22,10 @@ public interface BlogService {
 
 	Asset createPostAsset(Long postId, String key, ManagedFile managedFile);
 
-	Post updatePost(Long postId, String title, String summary, String content, String[] tags, Set<Asset> assets);
+	Post updatePost(Long postId, String title, String content, String[] tags, Set<Asset> assets);
 
 	// posts
-	Post createPost(Long postId, String title, String summary, String content, String[] tags, Set<Asset> assets);
+	Post createPost(Long blogId, String title, String content, String[] tags, Set<Asset> assets);
 
 	/**
 	 * I imagine a world whereas you type text and reference images that we resolve all
