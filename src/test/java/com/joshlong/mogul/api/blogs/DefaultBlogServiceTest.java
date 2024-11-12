@@ -58,11 +58,9 @@ class DefaultBlogServiceTest {
 		Assertions.assertTrue(StringUtils.hasText(blog.title()), "the title should not be null");
 		Assertions.assertTrue(StringUtils.hasText(blog.description()), "the description should not be null");
 		Assertions.assertNotNull(blog.posts(), "there should be a non-null posts collection");
-
-		Assertions.assertTrue(blog.equals(this.blogService.getBlogById(blog.id())));
+		Assertions.assertEquals(blog, this.blogService.getBlogById(blog.id()));
 
 		// now let's create a post
-
 		var split = "spring,java,crm".split(",");
 		var post = this.blogService.createPost(blog.id(), "this is a post for my new blog!  ",
 				"this is some sample content that Im sure will be double dope indeed", split, new HashSet<>());
