@@ -13,8 +13,6 @@ public interface CompositionService {
 	 */
 	Composition compose(Long mogulId, Class<?> clazz, Serializable publicationKey, String field);
 
-	Composition getCompositionById(Long id);
-
 	Attachment attach(Long compositionId, String key, ManagedFile managedFile);
 
 }

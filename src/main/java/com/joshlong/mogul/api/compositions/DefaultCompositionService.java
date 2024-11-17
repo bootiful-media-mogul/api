@@ -33,7 +33,6 @@ class DefaultCompositionService implements CompositionService {
 		this.compositionRowMapper = new CompositionRowMapper(this::getAttachmentsByComposition);
 	}
 
-	@Override
 	public Composition getCompositionById(Long id) {
 		return this.db.sql("select  * from composition where id = ? ")
 			.params(id)
@@ -54,8 +53,12 @@ class DefaultCompositionService implements CompositionService {
 					""")//
 			.params(mogulId, className, field, payload)//
 			.update(generatedKeyHolder);
-		var id = JdbcUtils.getIdFromKeyHolder(generatedKeyHolder);
-		return this.getCompositionById(id.longValue());
+
+		return this.db
+			.sql("select * from composition where mogul_id = ? and payload_class = ? and field = ? and payload = ?")
+			.params(mogulId, className, field, payload)
+			.query(this.compositionRowMapper)
+			.single();
 	}
 
 	@Override
@@ -63,8 +66,11 @@ class DefaultCompositionService implements CompositionService {
 		var gkh = new GeneratedKeyHolder();
 		this.db.sql("""
 				insert into composition_attachment ( key, composition_id, managed_file_id) values (?,?,?)
-				""").params(key, compositionId, managedFile.id()).update(gkh);
-		return null;
+						""")//
+			.params(key, compositionId, managedFile.id())//
+			.update(gkh);
+		var ai = JdbcUtils.getIdFromKeyHolder(gkh).longValue();
+		return this.getAttachmentById(ai);
 	}
 
 	private Attachment getAttachmentById(Long id) {
