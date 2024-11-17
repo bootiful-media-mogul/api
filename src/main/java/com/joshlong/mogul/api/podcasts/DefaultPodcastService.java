@@ -342,7 +342,7 @@ class DefaultPodcastService implements PodcastService {
 		for (var episode : this.getPodcastEpisodesByPodcast(podcastId)) {
 			this.deletePodcastEpisode(episode.id());
 		}
-		this.db.sql("delete from podcast where id= ?").param(podcastId).update();
+		this.db.sql(" delete from podcast where id = ?").param(podcastId).update();
 		this.publisher.publishEvent(new PodcastDeletedEvent(podcast));
 	}
 

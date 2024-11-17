@@ -8,10 +8,7 @@ import java.util.Map;
 
 public interface PodcastService {
 
-	// todo make this a configuration value from a property file or something.
 	String PODCAST_EPISODES_BUCKET = "mogul-managedfiles";
-
-	// String PODCAST_EPISODES_BUCKET = "mogul-podcast-episodes";
 
 	Segment createPodcastEpisodeSegment(Long mogulId, Long episodeId, String name, long crossfade);
 

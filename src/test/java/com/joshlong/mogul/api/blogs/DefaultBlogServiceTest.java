@@ -20,11 +20,11 @@ import java.util.concurrent.atomic.AtomicLong;
 @SpringBootTest
 class DefaultBlogServiceTest {
 
+	private final Logger log = LoggerFactory.getLogger(getClass());
+
 	private final JdbcClient db;
 
 	private final BlogService blogService;
-
-	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	private static final RowMapper<Mogul> MOGUL_ROW_MAPPER = (rs, rowNum) -> new Mogul(rs.getLong("id"),
 			rs.getString("username"), rs.getString("email"), rs.getString("client_id"), rs.getString("given_name"),
