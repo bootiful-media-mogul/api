@@ -55,9 +55,9 @@ class DefaultCompositionServiceTest {
 		var managedFile = this.managedFileService.createManagedFile(mogulId, "foo", "bar", "simple.png", 0,
 				MediaType.IMAGE_JPEG, true);
 		var key = "picture of author with fish";
-		var pictureOfAuthorWithFish = compositionService.attach(compositionForDescription.id(), key, managedFile);
+		var pictureOfAuthorWithFish = this.compositionService.attach(compositionForDescription.id(), key, managedFile);
 		assertNotNull(pictureOfAuthorWithFish, "the picture of author with fish should not be null");
-		var composition = compositionService.compose(mogulId, Blog.class, compositionKey, field);
+		var composition = this.compositionService.compose(mogulId, Blog.class, compositionKey, field);
 		assertEquals(1, composition.attachments().size(), "there should be one attachment for this composition");
 		assertEquals(key, composition.attachments().iterator().next().key());
 	}
