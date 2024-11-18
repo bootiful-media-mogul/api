@@ -2,6 +2,8 @@ package com.joshlong.mogul.api.podcasts;
 
 import com.joshlong.mogul.api.Publication;
 import com.joshlong.mogul.api.Settings;
+import com.joshlong.mogul.api.compositions.Composition;
+import com.joshlong.mogul.api.compositions.CompositionService;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.notifications.NotificationEvent;
 import com.joshlong.mogul.api.podcasts.publication.PodcastEpisodePublisherPlugin;
@@ -32,6 +34,8 @@ class PodcastController {
 
 	private final MogulService mogulService;
 
+	private final CompositionService compositionService;
+
 	private final PodcastService podcastService;
 
 	private final Map<String, PodcastEpisodePublisherPlugin> plugins;
@@ -42,11 +46,13 @@ class PodcastController {
 
 	private final Executor executor = Executors.newVirtualThreadPerTaskExecutor();
 
-	PodcastController(ApplicationEventPublisher publisher, MogulService mogulService, PodcastService podcastService,
+	PodcastController(ApplicationEventPublisher publisher, MogulService mogulService,
+			CompositionService compositionService, PodcastService podcastService,
 			Map<String, PodcastEpisodePublisherPlugin> plugins, PublicationService publicationService,
 			Settings settings) {
 		this.publisher = publisher;
 		this.mogulService = mogulService;
+		this.compositionService = compositionService;
 		this.podcastService = podcastService;
 		this.plugins = plugins;
 		this.publicationService = publicationService;
@@ -233,6 +239,16 @@ class PodcastController {
 			ep.getValue().sort(Comparator.comparingInt(Segment::order));
 
 		return map;
+	}
+
+	@SchemaMapping
+	Composition titleComposition(Episode episode) {
+		return this.podcastService.getPodcastEpisodeTitleComposition(episode.id());
+	}
+
+	@SchemaMapping
+	Composition descriptionComposition(Episode episode) {
+		return this.podcastService.getPodcastEpisodeDescriptionComposition(episode.id());
 	}
 
 	@MutationMapping

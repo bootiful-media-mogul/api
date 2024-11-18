@@ -87,6 +87,10 @@ type ManagedFile {
 }
 
 type Episode {
+    titleComposition: Composition
+    descriptionComposition: Composition
+    
+    #
     availablePlugins :[String]
     id : ID
     title: String

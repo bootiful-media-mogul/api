@@ -1,6 +1,10 @@
 package com.joshlong.mogul.api.compositions;
 
+import com.joshlong.mogul.api.Publication;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.util.Assert;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -19,6 +23,8 @@ class CompositionRowMapper implements RowMapper<Composition> {
 	 */
 	private final Function<Long, Collection<Attachment>> attachmentsResolver;
 
+	private final Logger log = LoggerFactory.getLogger(getClass());
+
 	CompositionRowMapper(Function<Long, Collection<Attachment>> attachmentsResolver) {
 		this.attachmentsResolver = attachmentsResolver;
 	}
@@ -26,7 +32,20 @@ class CompositionRowMapper implements RowMapper<Composition> {
 	@Override
 	public Composition mapRow(ResultSet rs, int rowNum) throws SQLException {
 		var id = rs.getLong("id");
-		return new Composition(id, rs.getString("key"), rs.getString("field"), this.attachmentsResolver.apply(id));
+		return new Composition(id, rs.getString("payload"), classFor(rs.getString("payload_class")),
+				rs.getString("field"), this.attachmentsResolver.apply(id));
+	}
+
+	private Class<?> classFor(String name) {
+		try {
+			Assert.hasText(name, "you must provide a non-empty class name");
+			return Class.forName(name);
+		}
+		catch (ClassNotFoundException e) {
+			log.warn("classNotFoundException when trying to do Class.forName({}) to resolve the class for a {} ", name,
+					Publication.class.getName(), e);
+		}
+		return null;
 	}
 
 }

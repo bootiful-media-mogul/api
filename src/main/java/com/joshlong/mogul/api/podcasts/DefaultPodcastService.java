@@ -1,5 +1,7 @@
 package com.joshlong.mogul.api.podcasts;
 
+import com.joshlong.mogul.api.compositions.Composition;
+import com.joshlong.mogul.api.compositions.CompositionService;
 import com.joshlong.mogul.api.managedfiles.CommonMediaTypes;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.managedfiles.ManagedFileService;
@@ -46,6 +48,8 @@ class DefaultPodcastService implements PodcastService {
 
 	private final PodcastRowMapper podcastRowMapper;
 
+	private final CompositionService compositionService;
+
 	private final SegmentRowMapper episodeSegmentRowMapper;
 
 	private final MogulService mogulService;
@@ -60,8 +64,10 @@ class DefaultPodcastService implements PodcastService {
 
 	private final ApplicationEventPublisher publisher;
 
-	DefaultPodcastService(MediaNormalizer mediaNormalizer, MogulService mogulService, JdbcClient db,
-			ManagedFileService managedFileService, ApplicationEventPublisher publisher, Transcriber transcriber) {
+	DefaultPodcastService(CompositionService compositionService, MediaNormalizer mediaNormalizer,
+			MogulService mogulService, JdbcClient db, ManagedFileService managedFileService,
+			ApplicationEventPublisher publisher, Transcriber transcriber) {
+		this.compositionService = compositionService;
 		this.db = db;
 		this.mediaNormalizer = mediaNormalizer;
 		this.mogulService = mogulService;
@@ -384,6 +390,18 @@ class DefaultPodcastService implements PodcastService {
 	}
 
 	@Override
+	public Composition getPodcastEpisodeTitleComposition(Long episodeId) {
+		var episode = this.getPodcastEpisodeById(episodeId);
+		return this.compositionService.compose(episode, "title");
+	}
+
+	@Override
+	public Composition getPodcastEpisodeDescriptionComposition(Long episodeId) {
+		var episode = this.getPodcastEpisodeById(episodeId);
+		return this.compositionService.compose(episode, "description");
+	}
+
+	@Override
 	public Segment createPodcastEpisodeSegment(Long mogulId, Long episodeId, String name, long crossfade) {
 		var maxOrder = (this.db
 			.sql("select max( sequence_number) from podcast_episode_segment where podcast_episode  = ? ")
@@ -462,8 +480,7 @@ class DefaultPodcastService implements PodcastService {
 		var uid = UUID.randomUUID().toString();
 		// todo we should check for collisions...
 		var bucket = PodcastService.PODCAST_EPISODES_BUCKET;
-		// these images should probably be publicly visible by default... everything else,
-		// no.
+		// images are publicly visible by default. everything else, not
 		var image = this.managedFileService.createManagedFile(currentMogulId, bucket, uid, "", 0,
 				CommonMediaTypes.BINARY, true);
 		var producedGraphic = this.managedFileService.createManagedFile(currentMogulId, bucket, uid,
@@ -471,9 +488,14 @@ class DefaultPodcastService implements PodcastService {
 		var producedAudio = this.managedFileService.createManagedFile(currentMogulId, bucket, uid, "produced-audio.mp3",
 				0, CommonMediaTypes.MP3, false);
 		var episode = this.createPodcastEpisode(podcastId, title, description, image, producedGraphic, producedAudio);
-		var seg = this.createPodcastEpisodeSegment(currentMogulId, episode.id(), "", 0);
-		Assert.notNull(seg, "could not create a podcast episode segment for episode " + episode.id());
-		return this.getPodcastEpisodeById(episode.id());
+		var episodeId = episode.id();
+		var titleComp = this.getPodcastEpisodeTitleComposition(episodeId);
+		var descriptionComp = this.getPodcastEpisodeDescriptionComposition(episodeId);
+		Assert.notNull(titleComp, "the title composition must not be null");
+		Assert.notNull(descriptionComp, "the description composition must not be null");
+		var seg = this.createPodcastEpisodeSegment(currentMogulId, episodeId, "", 0);
+		Assert.notNull(seg, "could not create a podcast episode segment for episode " + episodeId);
+		return this.getPodcastEpisodeById(episodeId);
 	}
 
 	private void ensurePodcastBelongsToMogul(Long currentMogulId, Long podcastId) {

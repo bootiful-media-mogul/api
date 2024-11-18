@@ -3,6 +3,7 @@ package com.joshlong.mogul.api.compositions;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.utils.JdbcUtils;
+import com.joshlong.mogul.api.utils.JsonUtils;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -39,20 +40,22 @@ class DefaultCompositionService implements CompositionService {
 	}
 
 	@Override
-	public Composition compose(Long mogulId, String key, String field) {
-		var generatedKeyHolder = new GeneratedKeyHolder();
+	public <T extends Composable> Composition compose(T payload, String field) {
 
+		var generatedKeyHolder = new GeneratedKeyHolder();
+		var key = JsonUtils.write(payload.compositionKey());
+		var clazz = payload.getClass().getName();
 		this.db //
 			.sql("""
-					insert into composition ( mogul_id ,  key , field ) values (?,?,?)
-					on conflict on constraint composition_mogul_id_key_field_key
+					insert into composition (  payload, payload_class ,   field ) values (?,?,?)
+					on conflict on constraint composition_payload_class_payload_field_key
 					do nothing
 					""")//
-			.params(mogulId, key, field)//
+			.params(key, clazz, field)//
 			.update(generatedKeyHolder);
 
-		return this.db.sql("select * from composition where mogul_id = ? and \"key\"  = ? and field = ? ")
-			.params(mogulId, key, field)
+		return this.db.sql("select * from composition where  payload_class  = ? and payload = ?  and field = ? ")
+			.params(clazz, key, field)
 			.query(this.compositionRowMapper)
 			.single();
 	}
@@ -61,8 +64,8 @@ class DefaultCompositionService implements CompositionService {
 	public Attachment attach(Long compositionId, String key, ManagedFile managedFile) {
 		var gkh = new GeneratedKeyHolder();
 		this.db.sql("""
-				insert into composition_attachment ( key, composition_id, managed_file_id) values (?,?,?)
-						""")//
+				insert into composition_attachment ( caption, composition_id, managed_file_id) values (?,?,?)
+				""")//
 			.params(key, compositionId, managedFile.id())//
 			.update(gkh);
 		var ai = JdbcUtils.getIdFromKeyHolder(gkh).longValue();

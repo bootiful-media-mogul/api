@@ -9,8 +9,8 @@ public interface CompositionService {
 	 * this method and pass in keys that already exist this will fetch the existing
 	 * composition, not create another one.
 	 */
-	Composition compose(Long mogulId, String key, String field);
+	<T extends Composable> Composition compose(T payload, String field);
 
-	Attachment attach(Long compositionId, String key, ManagedFile managedFile);
+	Attachment attach(Long compositionId, String caption, ManagedFile managedFile);
 
 }
