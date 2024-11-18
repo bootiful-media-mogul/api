@@ -10,10 +10,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.annotation.Commit;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@Transactional
 @SpringBootTest
 class DefaultCompositionServiceTest {
 
@@ -31,36 +34,32 @@ class DefaultCompositionServiceTest {
 	}
 
 	@BeforeAll
-	static void reset(@Autowired JdbcClient db) throws Exception {
+	static void reset(@Autowired JdbcClient db) {
 		db.sql("delete from composition_attachment ").update();
 		db.sql("delete from composition").update();
 	}
 
 	@Test
-	void compose() {
-
+	void composeAndAttach() {
 		var compositionKey = 233L;
-		var mogulId = this.db.sql("""
-				    select id from mogul limit 1
-				""").query(Long.class).single();
+		var mogulId = this.db.sql(" select id from mogul limit 1 ").query(Long.class).single();
 		var field = "description";
 		var compositionForDescription = this.compositionService.compose(mogulId, Blog.class, compositionKey, field);
 		Assertions.assertTrue(compositionForDescription.attachments().isEmpty(),
 				"there should be no attachments for this composition");
 		assertTrue(StringUtils.hasText(compositionForDescription.compositionKey()));
-		assertTrue(compositionForDescription.field().equals(field));
-		assertTrue(compositionForDescription.id() != null);
-		assertTrue(compositionForDescription.payloadClass().equals(Blog.class));
-		assertTrue(JsonUtils.read(compositionForDescription.compositionKey(), Long.class).equals(compositionKey));
-
-		var mf = this.managedFileService.createManagedFile(mogulId, "foo", "bar", "simple.png", 0, MediaType.IMAGE_JPEG,
-				true);
-		var pictureOfAuthorWithFish = compositionService.attach(compositionForDescription.id(),
-				"picture of author with fish", mf);
+		assertEquals(field, compositionForDescription.field());
+		assertNotNull(compositionForDescription.id());
+		assertEquals(Blog.class, compositionForDescription.payloadClass());
+		assertEquals(compositionKey, (long) JsonUtils.read(compositionForDescription.compositionKey(), Long.class));
+		var managedFile = this.managedFileService.createManagedFile(mogulId, "foo", "bar", "simple.png", 0,
+				MediaType.IMAGE_JPEG, true);
+		var caption = "picture of author with fish";
+		var pictureOfAuthorWithFish = compositionService.attach(compositionForDescription.id(), caption, managedFile);
 		assertNotNull(pictureOfAuthorWithFish, "the picture of author with fish should not be null");
-		assertEquals(compositionService.compose(mogulId, Blog.class, compositionKey, field).attachments().size() == 1,
-				true, "there should be one attachment for this composition");
-
+		var composition = compositionService.compose(mogulId, Blog.class, compositionKey, field);
+		assertEquals(1, composition.attachments().size(), "there should be one attachment for this composition");
+		assertEquals(caption, composition.attachments().iterator().next().key());
 	}
 
 }
