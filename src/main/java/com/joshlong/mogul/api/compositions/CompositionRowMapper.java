@@ -25,14 +25,8 @@ class CompositionRowMapper implements RowMapper<Composition> {
 
 	@Override
 	public Composition mapRow(ResultSet rs, int rowNum) throws SQLException {
-		try {
-			var id = rs.getLong("id");
-			return new Composition(id, rs.getString("payload"), Class.forName(rs.getString("payload_class")),
-					rs.getString("field"), this.attachmentsResolver.apply(id));
-		}
-		catch (ClassNotFoundException e) {
-			throw new RuntimeException(e);
-		}
+		var id = rs.getLong("id");
+		return new Composition(id, rs.getString("key"), rs.getString("field"), this.attachmentsResolver.apply(id));
 	}
 
 }

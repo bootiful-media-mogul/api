@@ -2,8 +2,6 @@ package com.joshlong.mogul.api.compositions;
 
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 
-import java.io.Serializable;
-
 public interface CompositionService {
 
 	/**
@@ -11,7 +9,7 @@ public interface CompositionService {
 	 * this method and pass in keys that already exist this will fetch the existing
 	 * composition, not create another one.
 	 */
-	Composition compose(Long mogulId, Class<?> clazz, Serializable publicationKey, String field);
+	Composition compose(Long mogulId, String key, String field);
 
 	Attachment attach(Long compositionId, String key, ManagedFile managedFile);
 

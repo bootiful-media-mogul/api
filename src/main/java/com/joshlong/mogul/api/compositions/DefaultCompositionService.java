@@ -3,13 +3,11 @@ package com.joshlong.mogul.api.compositions;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.utils.JdbcUtils;
-import com.joshlong.mogul.api.utils.JsonUtils;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Service;
 
-import java.io.Serializable;
 import java.util.Collection;
 
 /**
@@ -41,22 +39,20 @@ class DefaultCompositionService implements CompositionService {
 	}
 
 	@Override
-	public Composition compose(Long mogulId, Class<?> clazz, Serializable publicationKey, String field) {
+	public Composition compose(Long mogulId, String key, String field) {
 		var generatedKeyHolder = new GeneratedKeyHolder();
-		var payload = JsonUtils.write(publicationKey);
-		var className = clazz.getName();
+
 		this.db //
 			.sql("""
-					insert into composition ( mogul_id ,payload_class, field, payload) values (?,?,?,?)
-					on conflict on constraint composition_mogul_id_payload_payload_class_field_key
+					insert into composition ( mogul_id ,  key , field ) values (?,?,?)
+					on conflict on constraint composition_mogul_id_key_field_key
 					do nothing
 					""")//
-			.params(mogulId, className, field, payload)//
+			.params(mogulId, key, field)//
 			.update(generatedKeyHolder);
 
-		return this.db
-			.sql("select * from composition where mogul_id = ? and payload_class = ? and field = ? and payload = ?")
-			.params(mogulId, className, field, payload)
+		return this.db.sql("select * from composition where mogul_id = ? and \"key\"  = ? and field = ? ")
+			.params(mogulId, key, field)
 			.query(this.compositionRowMapper)
 			.single();
 	}

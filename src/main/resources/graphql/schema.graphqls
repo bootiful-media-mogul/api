@@ -4,7 +4,22 @@ type Setting {
     value: String
     valid: Boolean
 }
+# compositions
 
+type Composition  {
+    mogulId: Int
+    id:ID
+    field:String
+    attachments: [Attachment]
+
+}
+type Attachment {
+    id: ID
+    key: String
+    managedFile: ManagedFile
+}
+
+# 
 
 type Publication {
     mogulId:Int
@@ -31,6 +46,8 @@ type Mogul {
 
 
 type Query {
+    
+    compose(type: String, publicationKey:Int, managedFileId:Int): Composition 
 
     renderMarkdown( markdown : String) : String 
 
@@ -111,6 +128,10 @@ type NotificationEvent {
 }
 
 type Mutation {
+    
+    
+    attachToComposition(compositionId: Int ,  key:String, managedFileId: Int) : Attachment
+    
     setPodcastEpisodesSegmentTranscript(episodeSegmentId: ID, transcribable: Boolean, transcript: String) :Boolean
     setManagedFileVisibility( managedFileId: ID,  visible: Boolean) : Boolean
     unpublishPodcastEpisodePublication ( publicationId: ID) : Boolean
