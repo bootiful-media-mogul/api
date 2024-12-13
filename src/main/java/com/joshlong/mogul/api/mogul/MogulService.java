@@ -6,8 +6,8 @@ public interface MogulService {
 
 	Mogul getCurrentMogul();
 
-//	Mogul login(Authentication principal);
-	Mogul login(String username, String clientId, String first, String last) ;
+	// Mogul login(Authentication principal);
+	Mogul login(String username, String clientId, String first, String last);
 
 	Mogul getMogulById(Long id);
 

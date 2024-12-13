@@ -402,7 +402,7 @@ class DefaultPodcastService implements PodcastService {
 	private Composition compositionFor(Long episodeId, String field) {
 		var episode = this.getPodcastEpisodeById(episodeId);
 		return this.compositionService.compose(episode, field);
-	} 
+	}
 
 	@Override
 	public Segment createPodcastEpisodeSegment(Long mogulId, Long episodeId, String name, long crossfade) {

@@ -1,6 +1,5 @@
 package com.joshlong.mogul.api.compositions;
 
-
 public interface CompositionService {
 
 	/**

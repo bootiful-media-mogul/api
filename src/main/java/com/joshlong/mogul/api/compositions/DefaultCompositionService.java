@@ -65,7 +65,7 @@ class DefaultCompositionService implements CompositionService {
 		this.db.sql("""
 				insert into composition_attachment ( caption, composition_id, managed_file_id) values (?,?,?)
 				""")//
-				.params(key, compositionId, managedFileId)//
+			.params(key, compositionId, managedFileId)//
 			.update(gkh);
 		var ai = JdbcUtils.getIdFromKeyHolder(gkh).longValue();
 		return this.getAttachmentById(ai);

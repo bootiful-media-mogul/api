@@ -91,7 +91,6 @@ class DefaultMogulService implements MogulService {
 			@JsonProperty("family_name") String familyName, String nickname, String picture, String email) {
 	}
 
-	/* for testing */
 	@Override
 	public Mogul login(String username, String clientId, String first, String last) {
 		var mogulByName = (Mogul) null;
@@ -101,13 +100,13 @@ class DefaultMogulService implements MogulService {
 					on conflict on constraint mogul_client_id_username_key do  nothing
 					""";
 			this.db.sql(sql)
-					.params(username, //
-							clientId, //
-							username, //
-							first, //
-							last //
-					)//
-					.update();
+				.params(username, //
+						clientId, //
+						username, //
+						first, //
+						last //
+				)//
+				.update();
 			mogulByName = this.getMogulByName(username);
 			Assert.notNull(mogulByName, "the mogul by name [" + username + "] is null");
 			this.publisher.publishEvent(new MogulCreatedEvent(mogulByName));
@@ -121,15 +120,15 @@ class DefaultMogulService implements MogulService {
 	 */
 	Mogul login(JwtAuthenticationToken principal) {
 		if (principal.getPrincipal() instanceof Jwt jwt && jwt.getClaims().get("aud") instanceof List list
-					&& list.getFirst() instanceof String aud) {
+				&& list.getFirst() instanceof String aud) {
 			var accessToken = principal.getToken().getTokenValue();
-				var uri = this.auth0Domain + "/userinfo";
-				var rc = RestClient.builder().build();
-				var userinfo = rc.get()
-					.uri(uri)
-					.headers(httpHeaders -> httpHeaders.setBearerAuth(accessToken))
-					.retrieve()
-					.body(UserInfo.class);
+			var uri = this.auth0Domain + "/userinfo";
+			var rc = RestClient.builder().build();
+			var userinfo = rc.get()
+				.uri(uri)
+				.headers(httpHeaders -> httpHeaders.setBearerAuth(accessToken))
+				.retrieve()
+				.body(UserInfo.class);
 			return this.login(userinfo.email(), aud, userinfo.givenName(), userinfo.familyName());
 		}
 		throw new IllegalStateException("you should never reach this point!");
