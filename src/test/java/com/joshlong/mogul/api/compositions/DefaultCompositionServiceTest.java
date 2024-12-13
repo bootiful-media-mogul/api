@@ -57,16 +57,15 @@ class DefaultCompositionServiceTest {
 	private final MogulService mogulService;
 
 	DefaultCompositionServiceTest(@Autowired ApplicationEventPublisher publisher, @Autowired JdbcClient db,
-								  @Autowired CompositionService compositionService, @Autowired PodcastService podcastService,
-								  @Autowired ManagedFileService managedFileService,
-								  @Autowired MogulService mogulService) {
+			@Autowired CompositionService compositionService, @Autowired PodcastService podcastService,
+			@Autowired ManagedFileService managedFileService, @Autowired MogulService mogulService) {
 		this.db = db;
 		this.podcastService = podcastService;
 		this.compositionService = compositionService;
 		this.managedFileService = managedFileService;
 		this.publisher = publisher;
 		this.mogulService = mogulService;
-    }
+	}
 
 	@BeforeAll
 	static void reset(@Autowired JdbcClient db) {
@@ -74,7 +73,8 @@ class DefaultCompositionServiceTest {
 		db.sql("delete from composition").update();
 	}
 
-	//todo refactor this code to use transactino template to transactionally wrtie the user
+	// todo refactor this code to use transactino template to transactionally wrtie the
+	// user
 	// and _remove_ the @transactional annotation from the classs itself.
 
 	@Test
@@ -85,9 +85,9 @@ class DefaultCompositionServiceTest {
 			var login = this.mogulService.login(ONE, "123", "Josh", "Long");
 			assertNotNull(login, "the login should not be null");
 			// we should have at least one mogul at this point.
-			return  login.id() ;
+			return login.id();
 		});
-		
+
 		var podcast = this.podcastService.createPodcast(mogulId, "the simplest podcast ever");
 		var episode = this.podcastService.createPodcastEpisodeDraft(mogulId, podcast.id(), "the title",
 				"the description");
