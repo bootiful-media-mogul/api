@@ -391,15 +391,18 @@ class DefaultPodcastService implements PodcastService {
 
 	@Override
 	public Composition getPodcastEpisodeTitleComposition(Long episodeId) {
-		var episode = this.getPodcastEpisodeById(episodeId);
-		return this.compositionService.compose(episode, "title");
+		return this.compositionFor(episodeId, "title");
 	}
 
 	@Override
 	public Composition getPodcastEpisodeDescriptionComposition(Long episodeId) {
-		var episode = this.getPodcastEpisodeById(episodeId);
-		return this.compositionService.compose(episode, "description");
+		return this.compositionFor(episodeId, "description");
 	}
+
+	private Composition compositionFor(Long episodeId, String field) {
+		var episode = this.getPodcastEpisodeById(episodeId);
+		return this.compositionService.compose(episode, field);
+	} 
 
 	@Override
 	public Segment createPodcastEpisodeSegment(Long mogulId, Long episodeId, String name, long crossfade) {

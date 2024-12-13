@@ -17,7 +17,7 @@ class AttachmentRowMapper implements RowMapper<Attachment> {
 
 	@Override
 	public Attachment mapRow(ResultSet rs, int rowNum) throws SQLException {
-		return new Attachment(rs.getLong("id"), rs.getString("key"),
+		return new Attachment(rs.getLong("id"), rs.getString("caption"),
 				this.managedFileFunction.apply(rs.getLong("managed_file_id")));
 	}
 

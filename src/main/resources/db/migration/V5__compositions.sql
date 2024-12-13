@@ -14,8 +14,8 @@ create table composition
 create table composition_attachment
 (
     id      serial primary key not null,
+    created timestamp not null default now(),
     composition_id  bigint references composition (id),
     managed_file_id bigint references managed_file (id),
-    created         timestamp          not null default now(),
-    caption text               not null default ''
+    caption text      not null default ''
 );

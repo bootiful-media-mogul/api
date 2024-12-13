@@ -1,6 +1,5 @@
 package com.joshlong.mogul.api.compositions;
 
-import com.joshlong.mogul.api.managedfiles.ManagedFile;
 
 public interface CompositionService {
 
@@ -11,6 +10,6 @@ public interface CompositionService {
 	 */
 	<T extends Composable> Composition compose(T payload, String field);
 
-	Attachment attach(Long compositionId, String caption, ManagedFile managedFile);
+	Attachment attach(Long compositionId, String caption, Long managedFileId);
 
 }

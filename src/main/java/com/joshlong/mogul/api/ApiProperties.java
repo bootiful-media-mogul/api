@@ -25,10 +25,6 @@ public record ApiProperties(Aws aws, Podcasts podcasts, Transcription transcript
 
 		public record Producer(Amqp amqp) {
 
-			// public record S3(String assetsBucket, String inputBucket, String
-			// outputBucket) {
-			// }
-
 			public record Amqp(String requests, String replies) {
 			}
 

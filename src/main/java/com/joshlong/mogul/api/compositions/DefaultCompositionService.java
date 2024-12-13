@@ -1,6 +1,5 @@
 package com.joshlong.mogul.api.compositions;
 
-import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.utils.JdbcUtils;
 import com.joshlong.mogul.api.utils.JsonUtils;
@@ -61,12 +60,12 @@ class DefaultCompositionService implements CompositionService {
 	}
 
 	@Override
-	public Attachment attach(Long compositionId, String key, ManagedFile managedFile) {
+	public Attachment attach(Long compositionId, String key, Long managedFileId) {
 		var gkh = new GeneratedKeyHolder();
 		this.db.sql("""
 				insert into composition_attachment ( caption, composition_id, managed_file_id) values (?,?,?)
 				""")//
-			.params(key, compositionId, managedFile.id())//
+				.params(key, compositionId, managedFileId)//
 			.update(gkh);
 		var ai = JdbcUtils.getIdFromKeyHolder(gkh).longValue();
 		return this.getAttachmentById(ai);

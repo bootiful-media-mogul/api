@@ -13,7 +13,6 @@ import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.event.AuthenticationSuccessEvent;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -92,14 +91,38 @@ class DefaultMogulService implements MogulService {
 			@JsonProperty("family_name") String familyName, String nickname, String picture, String email) {
 	}
 
+	/* for testing */
 	@Override
-	public Mogul login(Authentication principal) {
-		var principalName = principal.getName();
+	public Mogul login(String username, String clientId, String first, String last) {
 		var mogulByName = (Mogul) null;
-		if ((mogulByName = this.getMogulByName(principalName)) == null) {
-			if (principal.getPrincipal() instanceof Jwt jwt && jwt.getClaims().get("aud") instanceof List list
+		if ((mogulByName = this.getMogulByName(username)) == null) {
+			var sql = """
+					insert into mogul(username,  client_id , email, given_name, family_name) values (?, ?,?, ?,?)
+					on conflict on constraint mogul_client_id_username_key do  nothing
+					""";
+			this.db.sql(sql)
+					.params(username, //
+							clientId, //
+							username, //
+							first, //
+							last //
+					)//
+					.update();
+			mogulByName = this.getMogulByName(username);
+			Assert.notNull(mogulByName, "the mogul by name [" + username + "] is null");
+			this.publisher.publishEvent(new MogulCreatedEvent(mogulByName));
+		} //
+		this.publisher.publishEvent(new MogulAuthenticatedEvent(mogulByName));
+		return mogulByName;
+	}
+
+	/**
+	 * adapts calls to {@link this#login(String, String, String, String)}
+	 */
+	Mogul login(JwtAuthenticationToken principal) {
+		if (principal.getPrincipal() instanceof Jwt jwt && jwt.getClaims().get("aud") instanceof List list
 					&& list.getFirst() instanceof String aud) {
-				var accessToken = ((JwtAuthenticationToken) principal).getToken().getTokenValue();
+			var accessToken = principal.getToken().getTokenValue();
 				var uri = this.auth0Domain + "/userinfo";
 				var rc = RestClient.builder().build();
 				var userinfo = rc.get()
@@ -107,30 +130,9 @@ class DefaultMogulService implements MogulService {
 					.headers(httpHeaders -> httpHeaders.setBearerAuth(accessToken))
 					.retrieve()
 					.body(UserInfo.class);
-				if (log.isDebugEnabled())
-					log.debug("userinfo: {}", userinfo.email());
-
-				var sql = """
-						insert into mogul(username,  client_id , email, given_name, family_name) values (?, ?,?, ?,?)
-						on conflict on constraint mogul_client_id_username_key do  nothing
-						""";
-				this.db.sql(sql)
-					.params(principalName, //
-							aud, //
-							userinfo.email(), //
-							userinfo.givenName(), //
-							userinfo.familyName() //
-					)//
-					.update();
-			} //
-			else {
-				log.debug("not a valid authentication!");
-			}
-			mogulByName = this.getMogulByName(principalName);
-			this.publisher.publishEvent(new MogulCreatedEvent(mogulByName));
+			return this.login(userinfo.email(), aud, userinfo.givenName(), userinfo.familyName());
 		}
-		this.publisher.publishEvent(new MogulAuthenticatedEvent(mogulByName));
-		return mogulByName;
+		throw new IllegalStateException("you should never reach this point!");
 	}
 
 	@Override
