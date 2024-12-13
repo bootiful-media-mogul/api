@@ -18,7 +18,7 @@ import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.test.context.support.WithUserDetails;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import static com.joshlong.mogul.api.compositions.TestSecurityConfiguration.ONE;
 import static org.junit.jupiter.api.Assertions.*;
@@ -41,7 +41,6 @@ class TestSecurityConfiguration {
 
 @Disabled
 @Import(TestSecurityConfiguration.class)
-@Transactional
 @SpringBootTest
 class DefaultCompositionServiceTest {
 
@@ -80,14 +79,15 @@ class DefaultCompositionServiceTest {
 
 	@Test
 	@WithUserDetails(ONE)
-	void composeAndAttach() {
+	void composeAndAttach(@Autowired TransactionTemplate transactionTemplate) {
 		// todo login
-		var login = this.mogulService
-				.login(ONE, "123", "Josh", "Long");
-		assertNotNull(login, "the login should not be null");
-		// we should have at least one mogul at this point.
-		var mogulId = this.db.sql(" select id from mogul limit 1 ").query(Long.class).single();
-
+		var mogulId = transactionTemplate.execute(status -> {
+			var login = this.mogulService.login(ONE, "123", "Josh", "Long");
+			assertNotNull(login, "the login should not be null");
+			// we should have at least one mogul at this point.
+			return  login.id() ;
+		});
+		
 		var podcast = this.podcastService.createPodcast(mogulId, "the simplest podcast ever");
 		var episode = this.podcastService.createPodcastEpisodeDraft(mogulId, podcast.id(), "the title",
 				"the description");
