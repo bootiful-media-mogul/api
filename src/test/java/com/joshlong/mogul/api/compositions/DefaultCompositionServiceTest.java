@@ -57,7 +57,7 @@ class DefaultCompositionServiceTest {
 			@Autowired TransactionTemplate transactionTemplate) {
 		// todo login
 		var mogulId = transactionTemplate.execute(status -> {
-			var login = mogulService.login(ONE, "123", "Josh", "Long");
+			var login = mogulService.login( "username", ONE, "123", "Josh", "Long");
 			assertNotNull(login, "the login should not be null");
 			// we should have at least one mogul at this point.
 			return login.id();

@@ -24,6 +24,7 @@ import org.springframework.web.client.RestClient;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -197,5 +198,23 @@ class DefaultMogulService implements MogulService {
             return null;
         });
     }
+
+}
+
+// use Collection#synchronized to make this threadsafe.
+class BoundedMap<K, V> extends LinkedHashMap<K, V> {
+
+    private final int maxEntries;
+
+    BoundedMap(int maxEntries) {
+        super(maxEntries + 1, 0.75f, true);
+        this.maxEntries = maxEntries;
+    }
+
+    @Override
+    protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
+        return size() > this.maxEntries;
+    }
+
 
 }
