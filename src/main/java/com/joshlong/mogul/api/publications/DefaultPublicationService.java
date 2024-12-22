@@ -202,8 +202,8 @@ class DefaultPublicationService implements PublicationService {
 		return List.of();
 	}
 
-	@EventListener(ApplicationReadyEvent.class)
-	void applicationReady() {
+	@EventListener
+	void applicationReady(ApplicationReadyEvent are) {
 		this.scheduledExecutorService.submit(this::refreshCache);
 		// todo why is this a minute later? why did this code exist?
 		// this.scheduledExecutorService.schedule(this::refreshCache, 1, TimeUnit.);
