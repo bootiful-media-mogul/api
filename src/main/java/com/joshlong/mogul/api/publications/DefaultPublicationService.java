@@ -209,18 +209,18 @@ class DefaultPublicationService implements PublicationService {
 		// this.scheduledExecutorService.schedule(this::refreshCache, 1, TimeUnit.);
 	}
 
-	@EventListener(PublicationUpdatedEvent.class)
-	void updated() {
+	@EventListener
+	void updated(PublicationUpdatedEvent pue) {
 		this.refreshCache();
 	}
 
-	@EventListener(PublicationStartedEvent.class)
-	void started() {
+	@EventListener
+	void started(PublicationStartedEvent pse) {
 		this.refreshCache();
 	}
 
-	@EventListener(PublicationCompletedEvent.class)
-	void completed() {
+	@EventListener
+	void completed(PublicationCompletedEvent pce) {
 		this.refreshCache();
 	}
 

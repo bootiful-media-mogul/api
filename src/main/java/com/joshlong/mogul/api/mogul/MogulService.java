@@ -1,18 +1,16 @@
 package com.joshlong.mogul.api.mogul;
 
-import org.springframework.security.core.Authentication;
 
 public interface MogulService {
 
-	Mogul getCurrentMogul();
+    Mogul getCurrentMogul();
 
-	// Mogul login(Authentication principal);
-	Mogul login(String username, String clientId, String first, String last);
+    Mogul login(String username, String clientId, String email, String first, String last);
 
-	Mogul getMogulById(Long id);
+    Mogul getMogulById(Long id);
 
-	Mogul getMogulByName(String name);
+    Mogul getMogulByName(String name);
 
-	void assertAuthorizedMogul(Long aLong);
+    void assertAuthorizedMogul(Long aLong);
 
 }
