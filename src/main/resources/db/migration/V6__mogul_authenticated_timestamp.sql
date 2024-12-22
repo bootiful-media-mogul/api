@@ -1,0 +1,1 @@
+alter table mogul add column updated timestamp default now();

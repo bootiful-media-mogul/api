@@ -96,11 +96,18 @@ class DefaultMogulService implements MogulService {
 
     @Override
     public Mogul login(String username, String clientId, String email, String first, String last) {
+        log.debug("logging in mogul [{}] with client id [{}] and email [{}]", username, clientId, email);
         var mogulByName = (Mogul) null;
         if ((mogulByName = this.getMogulByName(username)) == null) {
+            // todo the upsert for the mogul isnt working (the update isnt working) and the reason is because the key is not tied to the updated date.
+            //      needs to be both username AND update. not sure how to have a key friendly timestamp, tho.
+            //      no thats not right. the username and the client id SHOULD be the same. need to debug that they are fixed
+            //      across many requests. why isnt this matching? 
+            //todo get this code (including compositions) in a working enough state that it could be merged to prod and deployed since the rate limit will
+            //  affect prod, too.
             var sql = """
-                    insert into mogul(username,  client_id , email, given_name, family_name) values (?, ?,?, ?,?)
-                    on conflict on constraint mogul_client_id_username_key do  nothing
+                    insert into mogul(username,  client_id , email, given_name, family_name,updated) values (?, ?,?, ?,?,NOW())
+                    on conflict on constraint mogul_client_id_username_key do  update set updated = NOW()
                     """;
             this.db.sql(sql)
                     .params(username, //
@@ -122,12 +129,30 @@ class DefaultMogulService implements MogulService {
      * adapts calls to {@link this#login(String, String, String, String, String)}
      */
     private Mogul login(JwtAuthenticationToken principal) {
+        var username = principal.getName();
+        log.debug("logging in mogul [{}] with client id [{}]", username, principal.getPrincipal());
+        // avoid rate limiting effects of the /userinfo endpoint 
+        var mogul = this.db.sql("select * from mogul where username = ? and updated  > NOW() - INTERVAL '1 day' ")
+                .param(username)
+                .query(this.mogulRowMapper)
+                .list();
+        if (!mogul.isEmpty()) {
+            this.log.debug("found a recent mogul by name [{}] in the database, so no need to hit the /userinfo endpoint.", username);
+            return mogul.getFirst();
+        }
+
+        log.debug("could NOT find a recent mogul by name [{}] in the database, so we'll hit the /userinfo endpoint.", username);
+
         if (principal.getPrincipal() instanceof Jwt jwt && jwt.getClaims().get("aud") instanceof List list
                 && list.getFirst() instanceof String aud) {
+            // let's not load up the `/userinfo` endpoint tooo much
+//            this.db.sql( "select * from mogul where client_id = ? ")
+
             var accessToken = principal.getToken().getTokenValue();
             var uri = this.auth0Domain + "/userinfo";
             var rc = RestClient.builder().build();
-            var userinfo = rc.get()
+            var userinfo = rc
+                    .get()
                     .uri(uri)
                     .headers(httpHeaders ->
                             httpHeaders.setBearerAuth(accessToken)
@@ -159,7 +184,7 @@ class DefaultMogulService implements MogulService {
         msg.append("trying to resolve mogul by name [").append(name).append("]");
         var res = this.mogulsByName.computeIfAbsent(name, key -> {
             var moguls = this.db//
-                    .sql("select * from mogul where  username = ? ")
+                    .sql("select * from mogul where username = ? ")
                     .param(key)
                     .query(this.mogulRowMapper)
                     .list();
@@ -185,13 +210,15 @@ class DefaultMogulService implements MogulService {
         @Override
         public Mogul mapRow(ResultSet rs, int rowNum) throws SQLException {
             return new Mogul(rs.getLong("id"), rs.getString("username"), rs.getString("email"),
-                    rs.getString("client_id"), rs.getString("given_name"), rs.getString("family_name"));
+                    rs.getString("client_id"), rs.getString("given_name"), rs.getString("family_name"),
+                    rs.getDate("updated"));
         }
 
     }
 
     @EventListener
     void authenticationSuccessEvent(AuthenticationSuccessEvent ase) {
+        log.debug("handling authentication success event for {}", ase.getAuthentication().getName());
         this.transactionTemplate.execute(status -> {
             var authentication = (JwtAuthenticationToken) ase.getAuthentication();
             this.login(authentication);
