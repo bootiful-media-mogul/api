@@ -35,7 +35,7 @@ class Storage {
 	}
 
 	public void remove(String bucket, String objectName) {
-		if (bucketExists(bucket)) {
+		if (this.bucketExists(bucket)) {
 			var delete = DeleteObjectRequest.builder().bucket(bucket).key(objectName).build();
 			this.s3.deleteObject(delete);
 		}
