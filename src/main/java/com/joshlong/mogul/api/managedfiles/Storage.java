@@ -30,20 +30,20 @@ class Storage {
 	}
 
 	public void remove(URI uri) {
-		validUri(uri);
+		this.validUri(uri);
 		this.remove(uri.getHost(), uri.getPath());
 	}
 
 	public void remove(String bucket, String objectName) {
 		if (bucketExists(bucket)) {
 			var delete = DeleteObjectRequest.builder().bucket(bucket).key(objectName).build();
-			s3.deleteObject(delete);
+			this.s3.deleteObject(delete);
 		}
 	}
 
 	public void write(URI uri, Resource resource, MediaType mediaType) {
-		validUri(uri);
-		write(uri.getHost(), uri.getPath(), resource, mediaType);
+		this.validUri(uri);
+		this.write(uri.getHost(), uri.getPath(), resource, mediaType);
 	}
 
 	/*
@@ -128,7 +128,6 @@ class Storage {
 
 	public boolean exists(String bucket, String key) {
 		var request = HeadObjectRequest.builder().bucket(bucket).key(key).build();
-
 		try {
 			this.s3.headObject(request);
 			return true;
@@ -150,7 +149,7 @@ class Storage {
 		}
 	}
 
-	private static void validUri(URI uri) {
+	private void validUri(URI uri) {
 		Assert.state(uri != null && uri.getScheme().equalsIgnoreCase("s3") && uri.getPath().split("/").length == 2,
 				"this uri [" + Objects.requireNonNull(uri) + "] is not a valid s3 reference");
 	}
