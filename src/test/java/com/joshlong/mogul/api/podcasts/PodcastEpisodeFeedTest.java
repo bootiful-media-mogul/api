@@ -45,12 +45,8 @@ class PodcastEpisodeFeedTest {
 
 	@Test
     void feed() throws Exception {
-        // setup
-
-
         var mogulId = 1L;
         var podcastId = 1L;
-
         var mogul = new Mogul(mogulId, "jlong",
                 "josh@joshlong.com", "clientId",
                 "Josh", "Long" , new Date());

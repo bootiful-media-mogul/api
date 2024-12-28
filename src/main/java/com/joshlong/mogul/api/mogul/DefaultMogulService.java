@@ -54,8 +54,6 @@ class DefaultMogulService implements MogulService {
 
 	private final int daysSinceLastLogin = 1;
 
-	private final String auth0Domain;
-
 	private final Map<String, Mogul> mogulsByName = new ConcurrentHashMap<>();
 
 	private final Map<Long, Mogul> mogulsById = new ConcurrentHashMap<>();
@@ -70,10 +68,14 @@ class DefaultMogulService implements MogulService {
 
 	private final TransactionTemplate transactionTemplate;
 
-	DefaultMogulService(@Value("${auth0.domain}") String auth0Domain, JdbcClient jdbcClient,
+	private final String auth0Userinfo;
+
+	DefaultMogulService(@Value("${auth0.userinfo}") String auth0Userinfo, JdbcClient jdbcClient,
 			ApplicationEventPublisher publisher, TransactionTemplate transactionTemplate) {
-		this.auth0Domain = auth0Domain;
+
+		this.auth0Userinfo = auth0Userinfo;
 		this.transactionTemplate = transactionTemplate;
+
 		this.db = jdbcClient;
 		this.publisher = publisher;
 		Assert.notNull(this.db, "the db is null");
@@ -163,9 +165,9 @@ class DefaultMogulService implements MogulService {
 					"could NOT find a recent mogul by name [{}] in the database, so we'll have to hit the /userinfo endpoint.",
 					username);
 			var accessToken = principal.getToken().getTokenValue();
-			var uri = this.auth0Domain + "/userinfo";
+			// var uri = this.auth0Domain + "/userinfo";
 			var userinfo = this.userinfoHttpRestClient.get()
-				.uri(uri)
+				.uri(this.auth0Userinfo)
 				.headers(httpHeaders -> httpHeaders.setBearerAuth(accessToken))
 				.retrieve()
 				.body(UserInfo.class);
