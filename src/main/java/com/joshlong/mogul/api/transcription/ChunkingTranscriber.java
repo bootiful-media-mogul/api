@@ -101,7 +101,7 @@ class ChunkingTranscriber implements Transcriber {
 	}
 
 	private void enqueueForDeletion(File file) {
-		var futureInstant = futureInstant(2);
+		var futureInstant = this.futureInstant(2);
 		this.filesToDelete.computeIfAbsent(futureInstant, k -> new HashSet<>()).add(file);
 	}
 
