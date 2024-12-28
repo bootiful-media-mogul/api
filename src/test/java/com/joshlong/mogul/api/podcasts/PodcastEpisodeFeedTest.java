@@ -36,7 +36,7 @@ class PodcastEpisodeFeedTest {
 	private PublicationService publicationService;
 
 	@BeforeEach
-	void setup() throws Exception {
+	void setup() {
 		publicationService = mock(PublicationService.class);
 		mogulService = mock(MogulService.class);
 		managedFileService = mock(ManagedFileService.class);
@@ -49,7 +49,7 @@ class PodcastEpisodeFeedTest {
         var podcastId = 1L;
         var mogul = new Mogul(mogulId, "jlong",
                 "josh@joshlong.com", "clientId",
-                "Josh", "Long" , new Date());
+                "Josh", "Long", new Date());
         var podcast = new Podcast(mogul.id(),
                 podcastId, "the title", new Date(),
                 List.of());
@@ -72,7 +72,7 @@ class PodcastEpisodeFeedTest {
                     Episode.class)).thenReturn(List.of(new Publication(mogulId, counter.incrementAndGet(),
                     "mock", new Date(), new Date(), Map.of(), "", Episode.class,
                     "https://bootifulpodcast.fm/episodes/" + episode.id(), Publication.State.PUBLISHED)));
-		
+
     }
 
 	private Episode nextEpisode(long mogulId, long podcastId) throws Exception {
