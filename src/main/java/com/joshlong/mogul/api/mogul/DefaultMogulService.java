@@ -50,7 +50,7 @@ class DefaultMogulService implements MogulService {
 
 	private final RestClient userinfoHttpRestClient = RestClient.builder().build();
 
-	private final int daysSinceLastLogin = 1;
+	private final int minutesSinceLastUserinfoEndpointRequest = 5;
 
 	private final Map<String, Mogul> mogulsByName = new ConcurrentHashMap<>();
 
@@ -132,7 +132,7 @@ class DefaultMogulService implements MogulService {
 
 	private Mogul getRecentlyLoggedInMogulByUsername(String username) {
 		var sql = " select * from mogul where username = ? and updated  > ( NOW() - INTERVAL '"
-				+ this.daysSinceLastLogin + " day' ) ";
+				+ this.minutesSinceLastUserinfoEndpointRequest + " minute ' ) ";
 		var mogul = this.db.sql(sql).param(username).query(this.mogulRowMapper).list();
 		if (!mogul.isEmpty()) {
 			var validMatchingMogul = mogul.getFirst();
@@ -152,26 +152,30 @@ class DefaultMogulService implements MogulService {
 	/**
 	 * adapts calls to {@link this#login(String, String, String, String, String)}
 	 */
-	private void loginByPrincipal(JwtAuthenticationToken principal) {
+	private Mogul loginByPrincipal(JwtAuthenticationToken principal) {
 		var username = principal.getName();
 		this.log.trace("logging in mogul [{}] with client id [{}]", username, principal.getName());
 
-		// avoid rate limiting effects of the /userinfo endpoint
-		if (null == this.getRecentlyLoggedInMogulByUsername(username) && principal.getPrincipal() instanceof Jwt jwt
-				&& jwt.getClaims().get("aud") instanceof List<?> list && list.getFirst() instanceof String aud) {
-			this.log.trace(
-					"could NOT find a recent mogul by name [{}] in the database, so we'll have to hit the /userinfo endpoint.",
-					username);
-			var accessToken = principal.getToken().getTokenValue();
-			// var uri = this.auth0Domain + "/userinfo";
-			var userinfo = this.userinfoHttpRestClient.get()
-				.uri(this.auth0Userinfo)
-				.headers(httpHeaders -> httpHeaders.setBearerAuth(accessToken))
-				.retrieve()
-				.body(UserInfo.class);
-			this.login(userinfo.sub(), aud, userinfo.email(), userinfo.givenName(), userinfo.familyName());
+		var mogul = this.getRecentlyLoggedInMogulByUsername(username);
+		if (null == mogul) {
+			if (principal.getPrincipal() instanceof Jwt jwt && jwt.getClaims().get("aud") instanceof List<?> list
+					&& list.getFirst() instanceof String aud) {
+				this.log.trace(
+						"could NOT find a recent mogul by name [{}] in the database, so we'll have to hit the /userinfo endpoint.",
+						username);
+				var accessToken = principal.getToken().getTokenValue();
+				// var uri = this.auth0Domain + "/userinfo";
+				var userinfo = this.userinfoHttpRestClient.get()
+					.uri(this.auth0Userinfo)
+					.headers(httpHeaders -> httpHeaders.setBearerAuth(accessToken))
+					.retrieve()
+					.body(UserInfo.class);
+				mogul = this.login(userinfo.sub(), aud, userinfo.email(), userinfo.givenName(), userinfo.familyName());
+
+			}
 		}
-		throw new IllegalStateException("you should never reach this point!");
+		this.nonNullMogul(mogul, username);
+		return mogul;
 	}
 
 	@Override
