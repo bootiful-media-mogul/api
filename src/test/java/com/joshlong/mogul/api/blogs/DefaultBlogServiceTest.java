@@ -28,7 +28,7 @@ class DefaultBlogServiceTest {
 
 	private static final RowMapper<Mogul> MOGUL_ROW_MAPPER = (rs, rowNum) -> new Mogul(rs.getLong("id"),
 			rs.getString("username"), rs.getString("email"), rs.getString("client_id"), rs.getString("given_name"),
-			rs.getString("family_name"));
+			rs.getString("family_name"), rs.getDate("updated"));
 
 	private static final AtomicLong MOGUL = new AtomicLong(-1L);
 

@@ -27,10 +27,6 @@ class TestSecurityConfiguration {
 
 	static final String ONE = "joshlong";
 
-	// static final String ONE = "google-oauth2|107746898487618710317";
-
-	// static final String TWO = "joshlong";
-
 	@Bean
 	UserDetailsService userDetailsService() {
 		var user1 = User.withUsername(ONE).password("pw").roles("USER").build();
@@ -57,7 +53,7 @@ class DefaultCompositionServiceTest {
 			@Autowired TransactionTemplate transactionTemplate) {
 		// todo login
 		var mogulId = transactionTemplate.execute(status -> {
-			var login = mogulService.login( "username", ONE, "123", "Josh", "Long");
+			var login = mogulService.login("username", ONE, "123", "Josh", "Long");
 			assertNotNull(login, "the login should not be null");
 			// we should have at least one mogul at this point.
 			return login.id();

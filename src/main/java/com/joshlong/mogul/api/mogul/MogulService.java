@@ -1,16 +1,15 @@
 package com.joshlong.mogul.api.mogul;
 
-
 public interface MogulService {
 
-    Mogul getCurrentMogul();
+	Mogul getCurrentMogul();
 
-    Mogul login(String username, String clientId, String email, String first, String last);
+	Mogul login(String username, String clientId, String email, String first, String last);
 
-    Mogul getMogulById(Long id);
+	Mogul getMogulById(Long id);
 
-    Mogul getMogulByName(String name);
+	Mogul getMogulByName(String name);
 
-    void assertAuthorizedMogul(Long aLong);
+	void assertAuthorizedMogul(Long aLong);
 
 }

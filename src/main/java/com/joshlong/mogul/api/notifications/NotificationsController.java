@@ -18,43 +18,43 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 @RegisterReflectionForBinding(NotificationEvent.class)
 class NotificationsController {
 
-    private final Map<Long, Queue<NotificationEvent>> events = new ConcurrentHashMap<>();
+	private final Map<Long, Queue<NotificationEvent>> events = new ConcurrentHashMap<>();
 
-    private final MogulService mogulService;
+	private final MogulService mogulService;
 
-    NotificationsController(MogulService mogulService) {
-        this.mogulService = mogulService;
-    }
+	NotificationsController(MogulService mogulService) {
+		this.mogulService = mogulService;
+	}
 
-    @ApplicationModuleListener
-    void notificationEventListener(NotificationEvent notification) {
-        Assert.notNull(notification, "the notification must not be null");
-        var mogulId = notification.mogulId();
-        this.events.computeIfAbsent(mogulId, aLong -> new ConcurrentLinkedQueue<>()).add(notification);
-    }
+	@ApplicationModuleListener
+	void notificationEventListener(NotificationEvent notification) {
+		Assert.notNull(notification, "the notification must not be null");
+		var mogulId = notification.mogulId();
+		this.events.computeIfAbsent(mogulId, aLong -> new ConcurrentLinkedQueue<>()).add(notification);
+	}
 
-    @QueryMapping
-    Map<String, Object> notifications() {
-        var currentMogul = this.mogulService.getCurrentMogul();
-        if (currentMogul == null) {
-            return new HashMap<>();
-        }
-        var currentMogulId = currentMogul.id();
-        var notificationEvents = this.events.computeIfAbsent(currentMogulId, mogulId -> new ConcurrentLinkedQueue<>());
-        var notification = notificationEvents.poll();
-        if (null != notification) {
-            Assert.notNull(currentMogulId, "the current mogul id should not be null");
-            Assert.state(notification.when().getTime() > 0, "the time must not be null");
-            Assert.state(StringUtils.hasText(notification.key()), "the key must not be null");
-            Assert.state(StringUtils.hasText(notification.category()), "the category must not be null");
-            var m = new HashMap<String, Object>(Map.of("mogulId", currentMogulId, //
-                    "when", notification.when().getTime(), //
-                    "key", notification.key(), "category", notification.category(), "modal", notification.modal()));
-            if (StringUtils.hasText(notification.context()))
-                m.put("context", notification.context());
-            return m;
-        }
-        return null;
-    }
+	@QueryMapping
+	Map<String, Object> notifications() {
+		var currentMogul = this.mogulService.getCurrentMogul();
+		if (currentMogul == null) {
+			return new HashMap<>();
+		}
+		var currentMogulId = currentMogul.id();
+		var notificationEvents = this.events.computeIfAbsent(currentMogulId, mogulId -> new ConcurrentLinkedQueue<>());
+		var notification = notificationEvents.poll();
+		if (null != notification) {
+			Assert.notNull(currentMogulId, "the current mogul id should not be null");
+			Assert.state(notification.when().getTime() > 0, "the time must not be null");
+			Assert.state(StringUtils.hasText(notification.key()), "the key must not be null");
+			Assert.state(StringUtils.hasText(notification.category()), "the category must not be null");
+			var m = new HashMap<String, Object>(Map.of("mogulId", currentMogulId, //
+					"when", notification.when().getTime(), //
+					"key", notification.key(), "category", notification.category(), "modal", notification.modal()));
+			if (StringUtils.hasText(notification.context()))
+				m.put("context", notification.context());
+			return m;
+		}
+		return null;
+	}
 
 }
