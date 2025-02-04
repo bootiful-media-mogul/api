@@ -27,267 +27,263 @@ import java.util.stream.Collectors;
 @RegisterReflectionForBinding(Map.class)
 class PodcastController {
 
-    private final Logger log = LoggerFactory.getLogger(getClass());
+	private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final ApplicationEventPublisher publisher;
+	private final ApplicationEventPublisher publisher;
 
-    private final MogulService mogulService;
+	private final MogulService mogulService;
 
-    private final PodcastService podcastService;
+	private final PodcastService podcastService;
 
-    private final Map<String, PodcastEpisodePublisherPlugin> plugins;
+	private final Map<String, PodcastEpisodePublisherPlugin> plugins;
 
-    private final PublicationService publicationService;
+	private final PublicationService publicationService;
 
-    private final Settings settings;
+	private final Settings settings;
 
-    private final Executor executor = Executors.newVirtualThreadPerTaskExecutor();
+	private final Executor executor = Executors.newVirtualThreadPerTaskExecutor();
 
-    PodcastController(ApplicationEventPublisher publisher, MogulService mogulService, PodcastService podcastService,
-                      Map<String, PodcastEpisodePublisherPlugin> plugins, PublicationService publicationService,
-                      Settings settings) {
-        this.publisher = publisher;
-        this.mogulService = mogulService;
-        this.podcastService = podcastService;
-        this.plugins = plugins;
-        this.publicationService = publicationService;
-        this.settings = settings;
-    }
+	PodcastController(ApplicationEventPublisher publisher, MogulService mogulService, PodcastService podcastService,
+			Map<String, PodcastEpisodePublisherPlugin> plugins, PublicationService publicationService,
+			Settings settings) {
+		this.publisher = publisher;
+		this.mogulService = mogulService;
+		this.podcastService = podcastService;
+		this.plugins = plugins;
+		this.publicationService = publicationService;
+		this.settings = settings;
+	}
 
-    @QueryMapping
-    Collection<Episode> podcastEpisodesByPodcast(@Argument Long podcastId) {
-        return this.podcastService.getPodcastEpisodesByPodcast(podcastId);
-    }
+	@QueryMapping
+	Collection<Episode> podcastEpisodesByPodcast(@Argument Long podcastId) {
+		return this.podcastService.getPodcastEpisodesByPodcast(podcastId);
+	}
 
-    @SchemaMapping
-    Collection<Publication> publications(Episode episode) {
-        return this.publicationService.getPublicationsByPublicationKeyAndClass(episode.publicationKey(),
-                episode.getClass());
-    }
+	@SchemaMapping
+	Collection<Publication> publications(Episode episode) {
+		return this.publicationService.getPublicationsByPublicationKeyAndClass(episode.publicationKey(),
+				episode.getClass());
+	}
 
-    @MutationMapping
-    boolean movePodcastEpisodeSegmentDown(@Argument Long episodeId, @Argument Long episodeSegmentId) {
-        this.podcastService.movePodcastEpisodeSegmentDown(episodeId, episodeSegmentId);
-        return true;
-    }
+	@MutationMapping
+	boolean movePodcastEpisodeSegmentDown(@Argument Long episodeId, @Argument Long episodeSegmentId) {
+		this.podcastService.movePodcastEpisodeSegmentDown(episodeId, episodeSegmentId);
+		return true;
+	}
 
-    @MutationMapping
-    boolean movePodcastEpisodeSegmentUp(@Argument Long episodeId, @Argument Long episodeSegmentId) {
-        this.podcastService.movePodcastEpisodeSegmentUp(episodeId, episodeSegmentId);
-        return true;
-    }
+	@MutationMapping
+	boolean movePodcastEpisodeSegmentUp(@Argument Long episodeId, @Argument Long episodeSegmentId) {
+		this.podcastService.movePodcastEpisodeSegmentUp(episodeId, episodeSegmentId);
+		return true;
+	}
 
-    @MutationMapping
-    Episode updatePodcastEpisode(@Argument Long episodeId, @Argument String title, @Argument String description) {
-        return this.podcastService.updatePodcastEpisodeDetails(episodeId, title, description);
-    }
+	@MutationMapping
+	Episode updatePodcastEpisode(@Argument Long episodeId, @Argument String title, @Argument String description) {
+		return this.podcastService.updatePodcastEpisodeDetails(episodeId, title, description);
+	}
 
-    @QueryMapping
-    Episode podcastEpisodeById(@Argument Long id) {
-        return this.podcastService.getPodcastEpisodeById(id);
-    }
+	@QueryMapping
+	Episode podcastEpisodeById(@Argument Long id) {
+		return this.podcastService.getPodcastEpisodeById(id);
+	}
 
-    @MutationMapping
-    boolean addPodcastEpisodeSegment(@Argument Long episodeId) {
-        var mogul = this.mogulService.getCurrentMogul().id();
-        this.podcastService.createPodcastEpisodeSegment(mogul, episodeId, "", 0);
-        return true;
-    }
+	@MutationMapping
+	boolean addPodcastEpisodeSegment(@Argument Long episodeId) {
+		var mogul = this.mogulService.getCurrentMogul().id();
+		this.podcastService.createPodcastEpisodeSegment(mogul, episodeId, "", 0);
+		return true;
+	}
 
-    @MutationMapping
-    boolean refreshPodcastEpisodesSegmentTranscript(@Argument Long episodeSegmentId) {
-        this.podcastService.refreshPodcastEpisodesSegmentTranscript(episodeSegmentId);
-        return true;
-    }
+	@MutationMapping
+	boolean refreshPodcastEpisodesSegmentTranscript(@Argument Long episodeSegmentId) {
+		this.podcastService.refreshPodcastEpisodesSegmentTranscript(episodeSegmentId);
+		return true;
+	}
 
-    @MutationMapping
-    boolean setPodcastEpisodesSegmentTranscript(@Argument Long episodeSegmentId, @Argument boolean transcribable,
-                                                @Argument String transcript) {
-        this.podcastService.setPodcastEpisodesSegmentTranscript(episodeSegmentId, transcribable, transcript);
-        return true;
-    }
+	@MutationMapping
+	boolean setPodcastEpisodesSegmentTranscript(@Argument Long episodeSegmentId, @Argument boolean transcribable,
+			@Argument String transcript) {
+		this.podcastService.setPodcastEpisodesSegmentTranscript(episodeSegmentId, transcribable, transcript);
+		return true;
+	}
 
-    @BatchMapping
-    Map<Episode, Collection<String>> availablePlugins(List<Episode> episodes) {
-        var mogul = this.mogulService.getCurrentMogul();
-        var mapOfEpisodesToValidPlugins = new HashMap<Episode, Collection<String>>();
-        for (var pluginEntry : this.plugins.entrySet()) {
-            var pluginName = pluginEntry.getKey();
-            var plugin = pluginEntry.getValue();
-            var configuration = this.settings.getAllValuesByCategory(mogul.id(), pluginName);
-            for (var episode : episodes) {
-                var pluginNamesForEpisode = mapOfEpisodesToValidPlugins.computeIfAbsent(episode,
-                        e -> new ArrayList<>());
-                if (plugin.canPublish(configuration, episode)) {
-                    pluginNamesForEpisode.add(plugin.name());
-                } //
-                else {
-                    this.log.trace("can not publish with plugin {} for episode #{} with title {}", plugin.name(),
-                            episode.id(), episode.title());
-                }
-            }
-        }
-        return mapOfEpisodesToValidPlugins;
-    }
+	@BatchMapping
+	Map<Episode, Collection<String>> availablePlugins(List<Episode> episodes) {
+		var mogul = this.mogulService.getCurrentMogul();
+		var mapOfEpisodesToValidPlugins = new HashMap<Episode, Collection<String>>();
+		for (var pluginEntry : this.plugins.entrySet()) {
+			var pluginName = pluginEntry.getKey();
+			var plugin = pluginEntry.getValue();
+			var configuration = this.settings.getAllValuesByCategory(mogul.id(), pluginName);
+			for (var episode : episodes) {
+				var pluginNamesForEpisode = mapOfEpisodesToValidPlugins.computeIfAbsent(episode,
+						e -> new ArrayList<>());
+				if (plugin.canPublish(configuration, episode)) {
+					pluginNamesForEpisode.add(plugin.name());
+				} //
+				else {
+					this.log.trace("can not publish with plugin {} for episode #{} with title {}", plugin.name(),
+							episode.id(), episode.title());
+				}
+			}
+		}
+		return mapOfEpisodesToValidPlugins;
+	}
 
-    @SchemaMapping
-    long created(Podcast podcast) {
-        return podcast.created().getTime();
-    }
+	@SchemaMapping
+	long created(Podcast podcast) {
+		return podcast.created().getTime();
+	}
 
-    @SchemaMapping
-    long created(Episode episode) {
-        return episode.created().getTime();
-    }
+	@SchemaMapping
+	long created(Episode episode) {
+		return episode.created().getTime();
+	}
 
-    @QueryMapping
-    Podcast podcastById(@Argument Long id) {
-        return this.podcastService.getPodcastById(id);
-    }
+	@QueryMapping
+	Podcast podcastById(@Argument Long id) {
+		return this.podcastService.getPodcastById(id);
+	}
 
-    @QueryMapping
-    Collection<Podcast> podcasts() {
-        var currentMogul = this.mogulService.getCurrentMogul();
-        return this.podcastService.getAllPodcastsByMogul(currentMogul.id());
-    }
+	@QueryMapping
+	Collection<Podcast> podcasts() {
+		var currentMogul = this.mogulService.getCurrentMogul();
+		return this.podcastService.getAllPodcastsByMogul(currentMogul.id());
+	}
 
-    @SchemaMapping
-    Collection<Episode> episodes(Podcast podcast) {
-        this.mogulService.assertAuthorizedMogul(podcast.mogulId());
-        return this.podcastService.getPodcastEpisodesByPodcast(podcast.id());
-    }
+	@SchemaMapping
+	Collection<Episode> episodes(Podcast podcast) {
+		this.mogulService.assertAuthorizedMogul(podcast.mogulId());
+		return this.podcastService.getPodcastEpisodesByPodcast(podcast.id());
+	}
 
-    @MutationMapping
-    Long deletePodcastEpisode(@Argument Long id) {
-        this.podcastService.deletePodcastEpisode(id);
-        return id;
-    }
+	@MutationMapping
+	Long deletePodcastEpisode(@Argument Long id) {
+		this.podcastService.deletePodcastEpisode(id);
+		return id;
+	}
 
-    @MutationMapping
-    Long deletePodcastEpisodeSegment(@Argument Long id) {
-        this.podcastService.deletePodcastEpisodeSegment(id);
-        return id;
-    }
+	@MutationMapping
+	Long deletePodcastEpisodeSegment(@Argument Long id) {
+		this.podcastService.deletePodcastEpisodeSegment(id);
+		return id;
+	}
 
-    @MutationMapping
-    Long deletePodcast(@Argument Long id) {
-        var podcast = this.podcastService.getPodcastById(id);
-        Assert.notNull(podcast, "the podcast is null");
-        var mogulId = podcast.mogulId();
-        this.mogulService.assertAuthorizedMogul(mogulId);
-        var podcasts = this.podcastService.getAllPodcastsByMogul(mogulId);
-        Assert.state(!podcasts.isEmpty() && podcasts.size() - 1 > 0,
-                "you must have at least one active, non-deleted podcast");
-        this.podcastService.deletePodcast(podcast.id());
-        return id;
-    }
+	@MutationMapping
+	Long deletePodcast(@Argument Long id) {
+		var podcast = this.podcastService.getPodcastById(id);
+		Assert.notNull(podcast, "the podcast is null");
+		var mogulId = podcast.mogulId();
+		this.mogulService.assertAuthorizedMogul(mogulId);
+		var podcasts = this.podcastService.getAllPodcastsByMogul(mogulId);
+		Assert.state(!podcasts.isEmpty() && podcasts.size() - 1 > 0,
+				"you must have at least one active, non-deleted podcast");
+		this.podcastService.deletePodcast(podcast.id());
+		return id;
+	}
 
-    @MutationMapping
-    boolean publishPodcastEpisode(@Argument Long episodeId, @Argument String pluginName) {
-        var currentMogulId = this.mogulService.getCurrentMogul().id();
-        var auth = SecurityContextHolder.getContextHolderStrategy().getContext().getAuthentication();
-        var runnable = (Runnable) () -> {
-            SecurityContextHolder.getContext().setAuthentication(auth);
-            // todo make sure we set the currently authorized mogul as of this point based
-            // on the token there
-            this.mogulService.assertAuthorizedMogul(currentMogulId);
-            var episode = this.podcastService.getPodcastEpisodeById(episodeId);
-            var contextAndSettings = new HashMap<String, String>();
-            var publication = this.publicationService.publish(currentMogulId, episode, contextAndSettings,
-                    this.plugins.get(pluginName));
-            this.log.debug("finished publishing [{}] with plugin [{}] and got publication [{}] ",
-                    "#" + episode.id() + "/" + episode.title(), pluginName, publication);
-        };
-        this.executor.execute(runnable);
-        return true;
-    }
+	@MutationMapping
+	boolean publishPodcastEpisode(@Argument Long episodeId, @Argument String pluginName) {
+		var currentMogulId = this.mogulService.getCurrentMogul().id();
+		var auth = SecurityContextHolder.getContextHolderStrategy().getContext().getAuthentication();
+		var runnable = (Runnable) () -> {
+			SecurityContextHolder.getContext().setAuthentication(auth);
+			// todo make sure we set the currently authorized mogul as of this point based
+			// on the token there
+			this.mogulService.assertAuthorizedMogul(currentMogulId);
+			var episode = this.podcastService.getPodcastEpisodeById(episodeId);
+			var contextAndSettings = new HashMap<String, String>();
+			var publication = this.publicationService.publish(currentMogulId, episode, contextAndSettings,
+					this.plugins.get(pluginName));
+			this.log.debug("finished publishing [{}] with plugin [{}] and got publication [{}] ",
+					"#" + episode.id() + "/" + episode.title(), pluginName, publication);
+		};
+		this.executor.execute(runnable);
+		return true;
+	}
 
-    @MutationMapping
-    boolean unpublishPodcastEpisodePublication(@Argument Long publicationId) {
-        var runnable = (Runnable) () -> {
-            log.debug("going to unpublish the publication with id # {}", publicationId);
-            var publicationById = this.publicationService.getPublicationById(publicationId);
-            Assert.notNull(publicationById, "the publication should not be null");
-            var plugin = this.plugins.get(publicationById.plugin());
-            Assert.notNull(plugin, "you must specify an active plugin");
-            this.publicationService.unpublish(publicationById.mogulId(), publicationById, plugin);
-        };
-        this.executor.execute(runnable);
-        return true;
-    }
+	@MutationMapping
+	boolean unpublishPodcastEpisodePublication(@Argument Long publicationId) {
+		var runnable = (Runnable) () -> {
+			log.debug("going to unpublish the publication with id # {}", publicationId);
+			var publicationById = this.publicationService.getPublicationById(publicationId);
+			Assert.notNull(publicationById, "the publication should not be null");
+			var plugin = this.plugins.get(publicationById.plugin());
+			Assert.notNull(plugin, "you must specify an active plugin");
+			this.publicationService.unpublish(publicationById.mogulId(), publicationById, plugin);
+		};
+		this.executor.execute(runnable);
+		return true;
+	}
 
-    @SchemaMapping
-    long created(Publication publication) {
-        return publication.created().getTime();
-    }
+	@SchemaMapping
+	long created(Publication publication) {
+		return publication.created().getTime();
+	}
 
-    @SchemaMapping
-    Long published(Publication publication) {
-        return publication.published() != null ? publication.published().getTime() : null;
-    }
+	@SchemaMapping
+	Long published(Publication publication) {
+		return publication.published() != null ? publication.published().getTime() : null;
+	}
 
-    @BatchMapping
-    Map<Episode, List<Segment>> segments(List<Episode> episodes) {
-        var epIds = episodes.stream().map(Episode::id).collect(Collectors.toSet());
-        var allEpisodes = this.podcastService.getAllPodcastEpisodesByIds(epIds);
-        var allEpisodeSegments = this.podcastService.getPodcastEpisodeSegmentsByEpisodes(epIds);
-        var map = new HashMap<Episode, List<Segment>>();
+	@BatchMapping
+	Map<Episode, List<Segment>> segments(List<Episode> episodes) {
+		var epIds = episodes.stream().map(Episode::id).collect(Collectors.toSet());
+		var allEpisodes = this.podcastService.getAllPodcastEpisodesByIds(epIds);
+		var allEpisodeSegments = this.podcastService.getPodcastEpisodeSegmentsByEpisodes(epIds);
+		var map = new HashMap<Episode, List<Segment>>();
 
-        for (var ep : allEpisodes)
-            map.put(ep, allEpisodeSegments.get(ep.id()));
+		for (var ep : allEpisodes)
+			map.put(ep, allEpisodeSegments.get(ep.id()));
 
-        for (var ep : map.entrySet())
-            ep.getValue().sort(Comparator.comparingInt(Segment::order));
+		for (var ep : map.entrySet())
+			ep.getValue().sort(Comparator.comparingInt(Segment::order));
 
-        return map;
-    }
+		return map;
+	}
 
-    @SchemaMapping
-    Composition titleComposition(Episode episode) {
-        return this.podcastService.getPodcastEpisodeTitleComposition(episode.id());
-    }
+	@SchemaMapping
+	Composition titleComposition(Episode episode) {
+		return this.podcastService.getPodcastEpisodeTitleComposition(episode.id());
+	}
 
-    @SchemaMapping
-    Composition descriptionComposition(Episode episode) {
-        return this.podcastService.getPodcastEpisodeDescriptionComposition(episode.id());
-    }
+	@SchemaMapping
+	Composition descriptionComposition(Episode episode) {
+		return this.podcastService.getPodcastEpisodeDescriptionComposition(episode.id());
+	}
 
-    @MutationMapping
-    Podcast updatePodcast(
-            @Argument Long podcastId,
-            @Argument String title) {
-        var podcast = this.podcastService.updatePodcast(podcastId, title);
-        System.out.println("podcast: " + podcast);
-        return podcast;
-    }
+	@MutationMapping
+	Podcast updatePodcast(@Argument Long podcastId, @Argument String title) {
+		return this.podcastService.updatePodcast(podcastId, title);
+	}
 
-    @MutationMapping
-    Podcast createPodcast(@Argument String title) {
-        return this.podcastService.createPodcast(this.mogulService.getCurrentMogul().id(), title);
-    }
+	@MutationMapping
+	Podcast createPodcast(@Argument String title) {
+		return this.podcastService.createPodcast(this.mogulService.getCurrentMogul().id(), title);
+	}
 
-    @MutationMapping
-    Episode createPodcastEpisodeDraft(@Argument Long podcastId, @Argument String title, @Argument String description) {
-        return this.podcastService.createPodcastEpisodeDraft(this.mogulService.getCurrentMogul().id(), podcastId, title,
-                description);
-    }
+	@MutationMapping
+	Episode createPodcastEpisodeDraft(@Argument Long podcastId, @Argument String title, @Argument String description) {
+		return this.podcastService.createPodcastEpisodeDraft(this.mogulService.getCurrentMogul().id(), podcastId, title,
+				description);
+	}
 
-    @ApplicationModuleListener
-    void broadcastPodcastEpisodeCompletionEventToClients(PodcastEpisodeCompletionEvent podcastEpisodeCompletionEvent) {
-        var episode = podcastEpisodeCompletionEvent.episode();
-        var id = episode.id();
-        try {
-            var map = Map.of("episodeId", id, "complete", episode.complete());
-            var json = JsonUtils.write(map);
-            var notificationEvent = NotificationEvent.notificationEventFor(podcastEpisodeCompletionEvent.mogulId(),
-                    podcastEpisodeCompletionEvent, Long.toString(episode.id()), json, false, false);
-            this.publisher.publishEvent(notificationEvent);
-        } //
-        catch (Exception e) {
-            this.log.warn("experienced an exception when trying to emit "
-                    + "a podcast completed event for podcast episode id # {}", id);
-        } //
+	@ApplicationModuleListener
+	void broadcastPodcastEpisodeCompletionEventToClients(PodcastEpisodeCompletionEvent podcastEpisodeCompletionEvent) {
+		var episode = podcastEpisodeCompletionEvent.episode();
+		var id = episode.id();
+		try {
+			var map = Map.of("episodeId", id, "complete", episode.complete());
+			var json = JsonUtils.write(map);
+			var notificationEvent = NotificationEvent.notificationEventFor(podcastEpisodeCompletionEvent.mogulId(),
+					podcastEpisodeCompletionEvent, Long.toString(episode.id()), json, false, false);
+			this.publisher.publishEvent(notificationEvent);
+		} //
+		catch (Exception e) {
+			this.log.warn("experienced an exception when trying to emit "
+					+ "a podcast completed event for podcast episode id # {}", id);
+		} //
 
-    }
+	}
 
 }
