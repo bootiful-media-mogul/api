@@ -53,6 +53,8 @@ public interface PodcastService {
 
 	Episode getPodcastEpisodeById(Long episodeId);
 
+	Podcast updatePodcast(Long podcastId, String title);
+
 	void deletePodcast(Long podcastId);
 
 	void deletePodcastEpisode(Long episodeId);
@@ -64,5 +66,4 @@ public interface PodcastService {
 	void writePodcastEpisodeProducedAudio(Long episodeId, Long managedFileId);
 
 	Collection<Episode> getAllPodcastEpisodesByIds(Collection<Long> episodeIds);
-
 }

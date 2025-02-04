@@ -142,6 +142,7 @@ type Mutation {
     createPodcast(title:String): Podcast
     createPodcastEpisodeDraft(podcastId: ID, title: String, description:String): Episode
     deletePodcast(id:ID): ID
+    updatePodcast( podcastId:ID, title:String ): Podcast
     deletePodcastEpisode(id:ID): ID
     deletePodcastEpisodeSegment(id:ID): ID
     addPodcastEpisodeSegment(episodeId: ID): Boolean
