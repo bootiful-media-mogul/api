@@ -2,6 +2,7 @@ package com.joshlong.mogul.api.publications;
 
 import com.joshlong.mogul.api.Publication;
 import com.joshlong.mogul.api.Publishable;
+import com.joshlong.mogul.api.PublishableRepository;
 import com.joshlong.mogul.api.PublisherPlugin;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.notifications.NotificationEvent;
@@ -55,9 +56,11 @@ class DefaultPublicationService implements PublicationService {
 
 	private final ApplicationEventPublisher publisher;
 
+	private final Collection<PublishableRepository<?>> publishableRepositories;
+
 	DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
 			TransactionTemplate tt, Function<SettingsLookup, Map<String, String>> settingsLookup,
-			ApplicationEventPublisher publisher) {
+			ApplicationEventPublisher publisher, Collection<PublishableRepository<?>> publishableRepositories) {
 		this.db = db;
 		this.transactionTemplate = tt;
 		this.settingsLookup = settingsLookup;
@@ -65,6 +68,30 @@ class DefaultPublicationService implements PublicationService {
 		this.textEncryptor = textEncryptor;
 		this.publicationRowMapper = new PublicationRowMapper(textEncryptor);
 		this.publisher = publisher;
+		this.publishableRepositories = publishableRepositories;
+	}
+
+	@Override
+	public <T extends Publishable> T resolvePublishable(Long mogulId, Serializable id, Class<T> clazz) {
+		this.mogulService.assertAuthorizedMogul(mogulId);
+		for (var pr : this.publishableRepositories) {
+			if (pr.supports(clazz)) {
+				return (T) pr.find(id);
+			}
+		}
+		throw new IllegalStateException(
+				"we couldn't resolve a Publishable with id [" + id + "] and class [" + clazz + "]");
+	}
+
+	@Override
+	public <T extends Publishable> boolean canPublish(Long mogulId, Serializable serializable, Class<T> clazz,
+			Map<String, String> contextAndSettings, PublisherPlugin<T> plugin) {
+		var mogul = this.mogulService.getMogulById(mogulId);
+		Assert.notNull(plugin, "the plugin must not be null");
+		Assert.notNull(mogul, "the mogul should not be null");
+		var ctx = new HashMap<>(contextAndSettings == null ? Map.of() : contextAndSettings);
+		var payload = this.resolvePublishable(mogulId, serializable, clazz);
+		return plugin.canPublish(ctx, payload);
 	}
 
 	@Override
@@ -93,6 +120,7 @@ class DefaultPublicationService implements PublicationService {
 			//
 		}
 		return this.getPublicationById(publication.id());
+
 	}
 
 	@Override
@@ -143,24 +171,18 @@ class DefaultPublicationService implements PublicationService {
 		if (null != url) {
 			this.db.sql(" update publication set url = ? where id = ? ").params(url, publicationId).update();
 		}
-
 		this.publisher.publishEvent(new PublicationUpdatedEvent(publicationId));
-
 		var publication = this.getPublicationById(publicationId);
 		this.log.debug("writing publication out: {}", publication);
 		return publication;
 	}
-	// do this on a separate thread so that it's
-	// not included in the longer running parent transaction
 
 	@Override
 	public Publication getPublicationById(Long publicationId) {
-
 		for (var pc : this.publicationsCache.values())
 			for (var p : pc)
 				if (p.id().equals(publicationId))
 					return p;
-
 		throw new IllegalStateException(
 				"we shouldn't get to this point. what are you doing looking up a publication whose ID (" + publicationId
 						+ ") doesn't match? ");

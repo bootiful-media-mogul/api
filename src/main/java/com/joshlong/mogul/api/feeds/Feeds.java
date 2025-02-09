@@ -39,7 +39,7 @@ public class Feeds {
 
 	private static Element createEntry(Document doc, String entryId, Instant updatedInstant, String imageUrl,
 			String imageContentType, long thumbnailSize, String titleTxt, String entryUrl, String summaryText,
-			Map<String, String> customMetadataMap) throws ParserConfigurationException {
+			Map<String, String> customMetadataMap) {
 		var entry = doc.createElementNS("http://www.w3.org/2005/Atom", "entry");
 
 		var enclosure = doc.createElementNS("http://www.w3.org/2005/Atom", "link");

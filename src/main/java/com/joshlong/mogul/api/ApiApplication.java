@@ -2,10 +2,14 @@ package com.joshlong.mogul.api;
 
 import com.joshlong.mogul.api.mogul.Mogul;
 import com.joshlong.mogul.api.mogul.MogulCreatedEvent;
+import com.joshlong.mogul.api.podcasts.Episode;
+import com.joshlong.mogul.api.publications.PublicationService;
 import org.flywaydb.core.internal.publishing.PublishingConfigurationExtension;
 import org.springframework.aot.hint.MemberCategory;
 import org.springframework.aot.hint.RuntimeHints;
 import org.springframework.aot.hint.RuntimeHintsRegistrar;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -15,6 +19,7 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.integration.annotation.IntegrationComponentScan;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.util.Assert;
 
 import java.time.format.DateTimeFormatter;
 import java.util.Set;

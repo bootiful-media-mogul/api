@@ -5,7 +5,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-public interface PublisherPlugin<T> {
+public interface PublisherPlugin<T extends Publishable> {
 
 	/**
 	 * well known headers for the encrypted context data.

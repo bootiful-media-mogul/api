@@ -41,8 +41,6 @@ class PodcastController {
 
 	private final Settings settings;
 
-	private final Executor executor = Executors.newVirtualThreadPerTaskExecutor();
-
 	PodcastController(ApplicationEventPublisher publisher, MogulService mogulService, PodcastService podcastService,
 			Map<String, PodcastEpisodePublisherPlugin> plugins, PublicationService publicationService,
 			Settings settings) {
@@ -107,6 +105,7 @@ class PodcastController {
 		return true;
 	}
 
+	// todo this could be moved to the publication controller
 	@BatchMapping
 	Map<Episode, Collection<String>> availablePlugins(List<Episode> episodes) {
 		var mogul = this.mogulService.getCurrentMogul();
@@ -180,40 +179,6 @@ class PodcastController {
 				"you must have at least one active, non-deleted podcast");
 		this.podcastService.deletePodcast(podcast.id());
 		return id;
-	}
-
-	@MutationMapping
-	boolean publishPodcastEpisode(@Argument Long episodeId, @Argument String pluginName) {
-		var currentMogulId = this.mogulService.getCurrentMogul().id();
-		var auth = SecurityContextHolder.getContextHolderStrategy().getContext().getAuthentication();
-		var runnable = (Runnable) () -> {
-			SecurityContextHolder.getContext().setAuthentication(auth);
-			// todo make sure we set the currently authorized mogul as of this point based
-			// on the token there
-			this.mogulService.assertAuthorizedMogul(currentMogulId);
-			var episode = this.podcastService.getPodcastEpisodeById(episodeId);
-			var contextAndSettings = new HashMap<String, String>();
-			var publication = this.publicationService.publish(currentMogulId, episode, contextAndSettings,
-					this.plugins.get(pluginName));
-			this.log.debug("finished publishing [{}] with plugin [{}] and got publication [{}] ",
-					"#" + episode.id() + "/" + episode.title(), pluginName, publication);
-		};
-		this.executor.execute(runnable);
-		return true;
-	}
-
-	@MutationMapping
-	boolean unpublishPodcastEpisodePublication(@Argument Long publicationId) {
-		var runnable = (Runnable) () -> {
-			log.debug("going to unpublish the publication with id # {}", publicationId);
-			var publicationById = this.publicationService.getPublicationById(publicationId);
-			Assert.notNull(publicationById, "the publication should not be null");
-			var plugin = this.plugins.get(publicationById.plugin());
-			Assert.notNull(plugin, "you must specify an active plugin");
-			this.publicationService.unpublish(publicationById.mogulId(), publicationById, plugin);
-		};
-		this.executor.execute(runnable);
-		return true;
 	}
 
 	@SchemaMapping
