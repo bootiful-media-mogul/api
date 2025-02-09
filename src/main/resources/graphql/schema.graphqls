@@ -45,6 +45,8 @@ type Mogul {
 type Query {
 
     # publications
+
+
     canPublish (
         publishableType : String ,
         id :  Int, 
@@ -140,7 +142,13 @@ type NotificationEvent {
 }
 
 type Mutation {
-
+    
+    publish (
+        publishableType : String ,
+        id :  Int,
+        contextJson : String ,
+        plugin : String
+    ) : Boolean
 
 
 

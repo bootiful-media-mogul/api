@@ -11,9 +11,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.graphql.data.method.annotation.Argument;
+import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
 import java.io.Serializable;
 import java.util.HashMap;
@@ -61,19 +64,26 @@ class PublicationController<T extends Publishable> {
 	// todo remember to remove publish ad unpublush logic from the podcasts controller /
 	// service.
 
+	private Map<String, String> contextFromClient(String json) {
+		if (StringUtils.hasText(json)) {
+			// @formatter:off
+            return JsonUtils.read(json, new ParameterizedTypeReference<>() {});
+            // @formatter:on
+		}
+		return new HashMap<>();
+	}
+
 	@QueryMapping
 	boolean canPublish(@Argument String publishableType, @Argument Serializable id, @Argument String contextJson,
 			@Argument String plugin) {
-		var context = JsonUtils.read(contextJson, new ParameterizedTypeReference<Map<String, String>>() {
-		});
+
+		var context = this.contextFromClient(contextJson);
 		var aClass = resolve(publishableType);
 		if (id instanceof Number idAsNumber) {
 			var mogulId = this.mogulService.getCurrentMogul().id();
 			var publishable = this.publicationService.resolvePublishable(mogulId, idAsNumber.longValue(), aClass);
 			Assert.state(this.plugins.containsKey(plugin), "the plugin named [" + plugin + "] does not exist!");
 			var resolvedPlugin = this.plugins.get(plugin);
-
-			//
 			var configuration = this.settings.getAllValuesByCategory(mogulService.getCurrentMogul().id(), plugin);
 
 			// do NOT allow client side overrides of settings
@@ -101,32 +111,53 @@ class PublicationController<T extends Publishable> {
 		return match;
 	}
 
-	/*
-	 * @MutationMapping boolean publishPodcastEpisode(@Argument Long episodeId, @Argument
-	 * String pluginName) { var currentMogulId = this.mogulService.getCurrentMogul().id();
-	 * var auth =
-	 * SecurityContextHolder.getContextHolderStrategy().getContext().getAuthentication();
-	 * var runnable = (Runnable) () -> {
-	 * SecurityContextHolder.getContext().setAuthentication(auth); // todo make sure we
-	 * set the currently authorized mogul as of this point based // on the token there
-	 * this.mogulService.assertAuthorizedMogul(currentMogulId); var episode =
-	 * this.podcastService.getPodcastEpisodeById(episodeId); var contextAndSettings = new
-	 * HashMap<String, String>(); var publication =
-	 * this.publicationService.publish(currentMogulId, episode, contextAndSettings,
-	 * this.plugins.get(pluginName)); this.log.
-	 * debug("finished publishing [{}] with plugin [{}] and got publication [{}] ", "#" +
-	 * episode.id() + "/" + episode.title(), pluginName, publication); };
-	 * this.executor.execute(runnable); return true; }
-	 *
-	 * @MutationMapping boolean unpublishPodcastEpisodePublication(@Argument Long
-	 * publicationId) { var runnable = (Runnable) () -> {
-	 * log.debug("going to unpublish the publication with id # {}", publicationId); var
-	 * publicationById = this.publicationService.getPublicationById(publicationId);
-	 * Assert.notNull(publicationById, "the publication should not be null"); var plugin =
-	 * this.plugins.get(publicationById.plugin()); Assert.notNull(plugin,
-	 * "you must specify an active plugin");
-	 * this.publicationService.unpublish(publicationById.mogulId(), publicationById,
-	 * plugin); }; this.executor.execute(runnable); return true; }
-	 */
+	@MutationMapping
+	boolean publish(@Argument String publishableType, @Argument Serializable id, @Argument String contextJson,
+			@Argument String plugin) {
+		var currentMogulId = this.mogulService.getCurrentMogul().id();
+		var aClass = resolve(publishableType);
+		if (id instanceof Number idAsNumber) {
+			var mogulId = this.mogulService.getCurrentMogul().id();
+			var episode = this.publicationService.resolvePublishable(mogulId, idAsNumber.longValue(), aClass);
+			var auth = SecurityContextHolder.getContextHolderStrategy().getContext().getAuthentication();
+			var runnable = (Runnable) () -> {
+				SecurityContextHolder.getContext().setAuthentication(auth);
+				this.mogulService.assertAuthorizedMogul(currentMogulId);
+				var contextAndSettings = this.contextFromClient(contextJson);
+				this.publicationService.publish(currentMogulId, episode, contextAndSettings, this.plugins.get(plugin));
+			};
+			this.executor.execute(runnable);
+			return true;
+		}
+		return false;
+	}
+
+	// todo tie the UNpublication logic into this new subsystem!
+	@MutationMapping
+	boolean unpublish(@Argument Long publicationId) {
+		var runnable = (Runnable) () -> {
+			this.log.debug("going to unpublish the publication with id # {}", publicationId);
+			var publicationById = this.publicationService.getPublicationById(publicationId);
+			Assert.notNull(publicationById, "the publication should not be null");
+			var resolvedPlugin = this.plugins.get(publicationById.plugin());
+			Assert.notNull(resolvedPlugin, "you must specify an active plugin");
+			this.publicationService.unpublish(publicationById.mogulId(), publicationById, resolvedPlugin);
+		};
+		this.executor.execute(runnable);
+		return true;
+	}
 
 }
+/*
+ *
+ *
+ * @MutationMapping boolean unpublishPodcastEpisodePublication(@Argument Long
+ * publicationId) { var runnable = (Runnable) () -> {
+ * log.debug("going to unpublish the publication with id # {}", publicationId); var
+ * publicationById = this.publicationService.getPublicationById(publicationId);
+ * Assert.notNull(publicationById, "the publication should not be null"); var plugin =
+ * this.plugins.get(publicationById.plugin()); Assert.notNull(plugin,
+ * "you must specify an active plugin");
+ * this.publicationService.unpublish(publicationById.mogulId(), publicationById, plugin);
+ * }; this.executor.execute(runnable); return true; }
+ */

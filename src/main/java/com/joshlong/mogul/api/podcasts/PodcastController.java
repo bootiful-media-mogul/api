@@ -14,13 +14,10 @@ import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.graphql.data.method.annotation.*;
 import org.springframework.modulith.events.ApplicationModuleListener;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.Assert;
 
 import java.util.*;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Controller
@@ -106,6 +103,8 @@ class PodcastController {
 	}
 
 	// todo this could be moved to the publication controller
+	// todo remove this once all the logic for publication has been moved to the
+	// PublicationService
 	@BatchMapping
 	Map<Episode, Collection<String>> availablePlugins(List<Episode> episodes) {
 		var mogul = this.mogulService.getCurrentMogul();
