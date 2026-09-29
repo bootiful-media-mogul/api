@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.jobs;
 
+import org.jobrunr.jobs.lambdas.JobRequestHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -8,7 +9,7 @@ import org.springframework.util.Assert;
 
 import java.util.Map;
 
-public class MogulJobRequestHandler implements org.jobrunr.jobs.lambdas.JobRequestHandler<MogulJobRequest> {
+public class MogulJobRequestHandler implements JobRequestHandler<MogulJobRequest> {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
