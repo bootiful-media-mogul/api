@@ -109,6 +109,16 @@ type ManagedFile {
     downloadableUrl: String
 }
 
+type KeptRange {
+    start: Int
+    end: Int
+}
+
+input KeptRangeInput {
+    start: Int!
+    end: Int!
+}
+
 type Episode {
     id : Int
     titleComposition: Composition
@@ -132,6 +142,10 @@ type Segment {
     name : String
     audio: ManagedFile
     producedAudio : ManagedFile
+    # the waveform of audio, drawn by the processors. null for older segments until one is requested
+    waveform: ManagedFile
+    # the ranges of audio to keep, in milliseconds, in the order they play. null if unedited
+    edits: [KeptRange]
     order : Int
     crossFadeDuration : Int
     transcript: Transcript
@@ -292,6 +306,9 @@ type Mutation {
     # podcast episode segments
     deletePodcastEpisodeSegment(podcastEpisodeSegmentId: Int): Boolean
     createPodcastEpisodeSegment( podcastEpisodeId:  Int ): Int
+    # keeps only these ranges of the segment's audio and re-renders it. null keeps all of it
+    editPodcastEpisodeSegment(podcastEpisodeSegmentId: Int, kept: [KeptRangeInput!]): Boolean
+    requestPodcastEpisodeSegmentWaveform(podcastEpisodeSegmentId: Int): Boolean
     #    setPodcastEpisodeSegmentTranscript(podcastEpisodeSegmentId: Int , transcript: String) : Boolean
     #    transcribePodcastEpisodeSegment(podcastEpisodeSegmentId: Int ) : Boolean
     movePodcastEpisodeSegmentUp(podcastEpisodeId: Int, podcastEpisodeSegmentId: Int  ): Boolean
@@ -362,6 +379,7 @@ type Query {
     podcastById(podcastId: Int): Podcast
     podcasts: [Podcast]
     podcastEpisodeById(podcastEpisodeId:Int):Episode
+    podcastEpisodeSegmentById(podcastEpisodeSegmentId:Int):Segment
     podcastEpisodesByPodcast(podcastId:Int):[Episode]
 
     # managedFiles

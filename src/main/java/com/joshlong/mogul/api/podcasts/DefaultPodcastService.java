@@ -198,15 +198,93 @@ class DefaultPodcastService implements PodcastService {
 			// or it's one of the segments
 			for (var segment : segments) {
 				if (segment.audio().id().equals(mf.id())) {
-					var podcastEpisodeSegmentContext = Map.of( //
-							PODCAST_EPISODE_CONTEXT_KEY, (Object) episodeId, //
-							PODCAST_EPISODE_SEGMENT_CONTEXT_KEY, segment.id() //
-					);
-					this.mediaService.normalize(segment.audio(), segment.producedAudio(), podcastEpisodeSegmentContext);
+					// the edits were ranges of the audio this replaces. kept against a
+					// different file they would cut it in arbitrary places.
+					if (segment.edits() != null) {
+						this.db.sql("update podcast_episode_segment set edits = null where id = ?")
+							.params(segment.id())
+							.update();
+						this.invalidatePodcastEpisodeCache(episodeId);
+					}
+					var context = this.segmentContext(segment);
+					this.mediaService.normalize(segment.audio(), segment.producedAudio(), context);
+					this.mediaService.waveform(segment.audio(), this.waveformFor(segment), context);
 				}
 			}
 		}
 
+	}
+
+	private Map<String, Object> segmentContext(Segment segment) {
+		return Map.of(PODCAST_EPISODE_CONTEXT_KEY, segment.episodeId(), PODCAST_EPISODE_SEGMENT_CONTEXT_KEY,
+				segment.id());
+	}
+
+	/**
+	 * the segment's waveform file, created on the spot for a segment from before there
+	 * were waveforms. two of these racing for the same segment both create a file; the
+	 * one whose update lands keeps it, and the other deletes its own.
+	 */
+	private ManagedFile waveformFor(Segment segment) {
+		if (segment.waveform() != null)
+			return segment.waveform();
+		var audio = segment.audio();
+		var created = this.managedFileService.createManagedFile(audio.mogulId(), audio.folder(), "waveform.bin", 0,
+				CommonMediaTypes.BINARY, false);
+		var claimed = this.db.sql(
+				"update podcast_episode_segment set waveform_managed_file_id = ? where id = ? and waveform_managed_file_id is null")
+			.params(created.id(), segment.id())
+			.update();
+		this.invalidatePodcastEpisodeCache(segment.episodeId());
+		if (claimed == 1)
+			return created;
+		this.managedFileService.deleteManagedFile(created.id());
+		return Objects.requireNonNull(
+				CollectionUtils.firstOrNull(this.getPodcastEpisodeSegmentsByIds(List.of(segment.id()))).waveform());
+	}
+
+	/**
+	 * the segment, if it belongs to the mogul. every segment operation that comes from a
+	 * client goes through here first.
+	 */
+	private Segment ownedSegment(Long mogulId, Long segmentId) {
+		var owned = this.db.sql("""
+				select count(*) from podcast_episode_segment pes
+				join podcast_episode pe on pe.id = pes.podcast_episode_id
+				join podcast p on p.id = pe.podcast_id
+				where pes.id = ? and p.mogul_id = ?
+				""").params(segmentId, mogulId).query(Long.class).single();
+		Assert.state(owned == 1,
+				() -> "podcast episode segment #" + segmentId + " does not belong to mogul #" + mogulId);
+		return CollectionUtils.firstOrNull(this.getPodcastEpisodeSegmentsByIds(List.of(segmentId)));
+	}
+
+	@Override
+	public Segment getPodcastEpisodeSegmentById(Long mogulId, Long segmentId) {
+		return this.ownedSegment(mogulId, segmentId);
+	}
+
+	@Override
+	public void editPodcastEpisodeSegment(Long mogulId, Long segmentId, List<KeptRange> kept) {
+		var segment = this.ownedSegment(mogulId, segmentId);
+		Assert.state(kept == null || !kept.isEmpty(), "an edit has to keep something; delete the segment instead");
+		Assert.state(segment.audio().written(), "there's no audio to edit until some has been uploaded");
+		this.db.sql("update podcast_episode_segment set edits = ?::jsonb where id = ?")
+			.params(SegmentEdits.write(kept), segmentId)
+			.update();
+		this.invalidatePodcastEpisodeCache(segment.episodeId());
+		this.markAssetsDirty(segment.episodeId());
+		// the produced audio is rendered from the upload and the edits. the reply
+		// lands in mediaNormalized, same as an upload's, which updates the duration
+		// and the transcript.
+		this.mediaService.normalize(segment.audio(), segment.producedAudio(), SegmentEdits.forProcessors(kept),
+				this.segmentContext(segment));
+	}
+
+	@Override
+	public void requestPodcastEpisodeSegmentWaveform(Long mogulId, Long segmentId) {
+		var segment = this.ownedSegment(mogulId, segmentId);
+		this.mediaService.waveform(segment.audio(), this.waveformFor(segment), this.segmentContext(segment));
 	}
 
 	private void refreshPodcastEpisodeCompleteness(Long episodeId) {
@@ -405,7 +483,9 @@ class DefaultPodcastService implements PodcastService {
 	public void deletePodcastEpisodeSegment(Long episodeSegmentId) {
 		var segment = CollectionUtils.firstOrNull(this.getPodcastEpisodeSegmentsByIds(List.of(episodeSegmentId)));
 		Assert.state(segment != null, "you must specify a valid " + Segment.class.getName());
-		var managedFilesToDelete = Set.of(segment.audio().id(), segment.producedAudio().id());
+		var managedFilesToDelete = new HashSet<>(Set.of(segment.audio().id(), segment.producedAudio().id()));
+		if (segment.waveform() != null)
+			managedFilesToDelete.add(segment.waveform().id());
 		this.markPodcastEpisodeBySegmentAssetsDirty(episodeSegmentId);
 		this.db.sql("delete from podcast_episode_segment where id =?").params(episodeSegmentId).update();
 		for (var managedFileId : managedFilesToDelete)
@@ -535,11 +615,6 @@ class DefaultPodcastService implements PodcastService {
 		// after it. locking the episode row makes them take turns. it is the episode and
 		// not the table, so anyone working on a different episode is unaffected, and it
 		// is held only until this transaction commits.
-		// the number this claims is read and then written, so two of these running at
-		// once on the same episode would both read the same max and both take the number
-		// after it. locking the episode row makes them take turns. it is the episode and
-		// not the table, so anyone working on a different episode is unaffected, and it
-		// is held only until this transaction commits.
 		this.db.sql("select id from podcast_episode where id = ? for update")
 			.params(episodeId)
 			.query(Long.class)
@@ -557,11 +632,13 @@ class DefaultPodcastService implements PodcastService {
 				podcast_episode_id,
 				segment_audio_managed_file_id ,
 				produced_segment_audio_managed_file_id  ,
+				waveform_managed_file_id,
 				cross_fade_duration,
 				name,
 				sequence_number
 				)
 				values(
+				?,
 				?,
 				?,
 				?,
@@ -574,11 +651,13 @@ class DefaultPodcastService implements PodcastService {
 				CommonMediaTypes.MP3, false);
 		var producedSegmentAudioManagedFile = this.managedFileService.createManagedFile(mogulId, uid, "", 0,
 				CommonMediaTypes.MP3, false);
+		var waveformManagedFile = this.managedFileService.createManagedFile(mogulId, uid, "waveform.bin", 0,
+				CommonMediaTypes.BINARY, false);
 		var gkh = new GeneratedKeyHolder();
 		this.db //
 			.sql(sql)
-			.params(episodeId, segmentAudioManagedFile.id(), producedSegmentAudioManagedFile.id(), crossfade, name,
-					maxOrder)
+			.params(episodeId, segmentAudioManagedFile.id(), producedSegmentAudioManagedFile.id(),
+					waveformManagedFile.id(), crossfade, name, maxOrder)
 			.update(gkh);
 		var id = JdbcUtils.getIdFromKeyHolder(gkh);
 		this.invalidatePodcastEpisodeCache(episodeId);
@@ -756,31 +835,33 @@ class DefaultPodcastService implements PodcastService {
 
 		@Override
 		public List<Segment> extractData(ResultSet rs) throws SQLException, DataAccessException {
-
-			var list = new ArrayList<Map<String, Object>>();
+			// every row first, then every managed file they mention in one lookup
+			record Row(Long episodeId, Long id, Long audio, Long producedAudio, Long waveform, String edits,
+					long crossFadeDuration, String name, int order, long duration) {
+			}
+			var rows = new ArrayList<Row>();
 			var managedFileIds = new HashSet<Long>();
-
 			while (rs.next()) {
-				var segmentAudioManagedFileId = rs.getLong("segment_audio_managed_file_id");
-				var segmentAudioManagedFileId1 = rs.getLong("produced_segment_audio_managed_file_id");
-				managedFileIds.add(segmentAudioManagedFileId);
-				managedFileIds.add(segmentAudioManagedFileId1);
-				list.add(Map.of("podcast_episode_id", rs.getLong("podcast_episode_id"), //
-						"id", rs.getLong("id"), "segment_audio_managed_file_id", segmentAudioManagedFileId,
-						"produced_segment_audio_managed_file_id", segmentAudioManagedFileId1, "cross_fade_duration",
-						rs.getLong("cross_fade_duration"), "name", rs.getString("name"), "sequence_number",
-						rs.getInt("sequence_number"), "duration", rs.getLong("duration")));
+				var waveform = rs.getObject("waveform_managed_file_id", Long.class);
+				var row = new Row(rs.getLong("podcast_episode_id"), rs.getLong("id"),
+						rs.getLong("segment_audio_managed_file_id"),
+						rs.getLong("produced_segment_audio_managed_file_id"), waveform, rs.getString("edits"),
+						rs.getLong("cross_fade_duration"), rs.getString("name"), rs.getInt("sequence_number"),
+						rs.getLong("duration"));
+				managedFileIds.add(row.audio());
+				managedFileIds.add(row.producedAudio());
+				if (waveform != null)
+					managedFileIds.add(waveform);
+				rows.add(row);
 			}
-
-			var managedFileMap = managedFileFunction.apply(managedFileIds);
+			var managedFiles = this.managedFileFunction.apply(managedFileIds);
 			var result = new ArrayList<Segment>();
-			for (var m : list) {
-				result.add(new Segment((Long) m.get("podcast_episode_id"), (Long) m.get("id"),
-						managedFileMap.get((Long) m.get("segment_audio_managed_file_id")),
-						managedFileMap.get((Long) m.get("produced_segment_audio_managed_file_id")),
-						(Long) m.get("cross_fade_duration"), (String) m.get("name"), (Integer) m.get("sequence_number"),
-						(Long) m.get("duration")));
-			}
+			for (var row : rows)
+				result.add(new Segment(row.episodeId(), row.id(), managedFiles.get(row.audio()),
+						managedFiles.get(row.producedAudio()),
+						row.waveform() == null ? null : managedFiles.get(row.waveform()),
+						SegmentEdits.read(row.edits()), row.crossFadeDuration(), row.name(), row.order(),
+						row.duration()));
 			return result;
 		}
 

@@ -32,6 +32,8 @@ class DefaultMediaService implements MediaService {
 
 	static final String PRODUCTION_PROCESSOR_ID = "audioProductionProcessor";
 
+	static final String WAVEFORM_PROCESSOR_ID = "audioWaveformProcessor";
+
 	// what neither of them looks at, and both hand back untouched
 	static final String INPUT_MANAGED_FILE_ID = "inputManagedFileId";
 
@@ -54,6 +56,8 @@ class DefaultMediaService implements MediaService {
 
 	private static final String OUTPUT_KEY = "outputKey";
 
+	private static final String KEPT_RANGES = "keptRanges";
+
 	// what they write back
 	private static final String OUTPUT_CONTENT_TYPE = "outputContentType";
 
@@ -68,7 +72,8 @@ class DefaultMediaService implements MediaService {
 	private final TransactionTemplate transactionTemplate;
 
 	private final Map<String, Consumer<ProcessorCompletedEvent>> processorHandlers = new ConcurrentHashMap<>(
-			Map.of(NORMALIZATION_PROCESSOR_ID, this::normalized, PRODUCTION_PROCESSOR_ID, this::produced));
+			Map.of(NORMALIZATION_PROCESSOR_ID, this::normalized, PRODUCTION_PROCESSOR_ID, this::produced,
+					WAVEFORM_PROCESSOR_ID, this::waveformComputed));
 
 	DefaultMediaService(Processors processors, ManagedFileService managedFileService,
 			ApplicationEventPublisher publisher, TransactionTemplate transactionTemplate) {
@@ -80,6 +85,11 @@ class DefaultMediaService implements MediaService {
 
 	@Override
 	public void normalize(ManagedFile input, ManagedFile output, Map<String, Object> context) {
+		this.normalize(input, output, "", context);
+	}
+
+	@Override
+	public void normalize(ManagedFile input, ManagedFile output, String keptRanges, Map<String, Object> context) {
 		if (!input.written()) {
 			this.log.debug("the input file {} has not been written yet, so we can't normalize it", input.id());
 			return;
@@ -93,6 +103,8 @@ class DefaultMediaService implements MediaService {
 		request.put(OUTPUT_KEY, output.key());
 		request.put(INPUT_MANAGED_FILE_ID, input.id());
 		request.put(OUTPUT_MANAGED_FILE_ID, output.id());
+		if (StringUtils.hasText(keptRanges))
+			request.put(KEPT_RANGES, keptRanges);
 		this.launch(NORMALIZATION_PROCESSOR_ID, request,
 				() -> "could not request the normalization of ManagedFile #" + input.id());
 		this.log.debug("requested the normalization of {} into {}", input.id(), output.id());
@@ -118,6 +130,25 @@ class DefaultMediaService implements MediaService {
 		this.launch(PRODUCTION_PROCESSOR_ID, request,
 				() -> "could not request the production of ManagedFile #" + output.id());
 		this.log.debug("requested the production of {} into {}", keys, output.id());
+	}
+
+	@Override
+	public void waveform(ManagedFile input, ManagedFile output, Map<String, Object> context) {
+		if (!input.written()) {
+			this.log.debug("the input file {} has not been written yet, so there's no waveform to draw", input.id());
+			return;
+		}
+		var request = new HashMap<>(context);
+		request.put(INPUT_BUCKET, input.bucket());
+		request.put(INPUT_KEY, input.key());
+		request.put(INPUT_FILENAME, input.filename());
+		request.put(OUTPUT_BUCKET, output.bucket());
+		request.put(OUTPUT_KEY, output.key());
+		request.put(INPUT_MANAGED_FILE_ID, input.id());
+		request.put(OUTPUT_MANAGED_FILE_ID, output.id());
+		this.launch(WAVEFORM_PROCESSOR_ID, request,
+				() -> "could not request the waveform of ManagedFile #" + input.id());
+		this.log.debug("requested the waveform of {} into {}", input.id(), output.id());
 	}
 
 	private void launch(String processorId, Map<String, Object> request, Supplier<String> failure) {
@@ -146,6 +177,8 @@ class DefaultMediaService implements MediaService {
 		if (!event.success()) {
 			this.log.warn("the normalization of ManagedFile #{} into #{} failed: {}", inputId, outputId,
 					this.reason(event));
+			this.publish(new MediaNormalizationFailedEvent(this.managedFileService.getManagedFileById(inputId),
+					this.managedFileService.getManagedFileById(outputId), this.reason(event), context));
 			return;
 		}
 		var in = this.managedFileService.getManagedFileById(inputId);
@@ -174,6 +207,27 @@ class DefaultMediaService implements MediaService {
 		var out = this.managedFileService.getManagedFileById(output.id());
 		this.publish(new AudioProducedEvent(out, true, null, context));
 		this.log.debug("audio production completed into {}", out.id());
+	}
+
+	private void waveformComputed(ProcessorCompletedEvent event) {
+		var context = event.context();
+		var inputId = (Long) context.get(INPUT_MANAGED_FILE_ID);
+		var outputId = (Long) context.get(OUTPUT_MANAGED_FILE_ID);
+		if (!event.success()) {
+			// announced, not just logged: the segment editor is showing "drawing the
+			// waveform" until it hears one way or the other.
+			this.log.warn("drawing the waveform of ManagedFile #{} into #{} failed: {}", inputId, outputId,
+					this.reason(event));
+			this.publish(new AudioWaveformComputedEvent(this.managedFileService.getManagedFileById(inputId),
+					this.managedFileService.getManagedFileById(outputId), false, this.reason(event), context));
+			return;
+		}
+		var output = this.managedFileService.getManagedFileById(outputId);
+		this.managedFileService.refreshManagedFileFromStorage(output.id(), "waveform.bin", CommonMediaTypes.BINARY);
+		var in = this.managedFileService.getManagedFileById(inputId);
+		var out = this.managedFileService.getManagedFileById(outputId);
+		this.publish(new AudioWaveformComputedEvent(in, out, true, null, context));
+		this.log.debug("the waveform of {} has been drawn into {}", in.id(), out.id());
 	}
 
 	private String reason(ProcessorCompletedEvent event) {

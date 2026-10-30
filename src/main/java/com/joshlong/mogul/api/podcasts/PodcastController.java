@@ -2,6 +2,8 @@ package com.joshlong.mogul.api.podcasts;
 
 import com.joshlong.mogul.api.Transcript;
 import com.joshlong.mogul.api.compositions.Composition;
+import com.joshlong.mogul.api.media.AudioWaveformComputedEvent;
+import com.joshlong.mogul.api.media.MediaNormalizationFailedEvent;
 import com.joshlong.mogul.api.media.MediaNormalizedEvent;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.notifications.NotificationEvent;
@@ -23,7 +25,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Controller
-@RegisterReflectionForBinding(Map.class)
+@RegisterReflectionForBinding({ Map.class, KeptRange.class })
 class PodcastController {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
@@ -80,6 +82,26 @@ class PodcastController {
 	@QueryMapping
 	Episode podcastEpisodeById(@Argument Long podcastEpisodeId) {
 		return this.podcastService.getPodcastEpisodeById(podcastEpisodeId);
+	}
+
+	@QueryMapping
+	Segment podcastEpisodeSegmentById(@Argument Long podcastEpisodeSegmentId) {
+		return this.podcastService.getPodcastEpisodeSegmentById(this.mogulService.getCurrentMogul().id(),
+				podcastEpisodeSegmentId);
+	}
+
+	@MutationMapping
+	boolean editPodcastEpisodeSegment(@Argument Long podcastEpisodeSegmentId, @Argument List<KeptRange> kept) {
+		this.podcastService.editPodcastEpisodeSegment(this.mogulService.getCurrentMogul().id(), podcastEpisodeSegmentId,
+				kept);
+		return true;
+	}
+
+	@MutationMapping
+	boolean requestPodcastEpisodeSegmentWaveform(@Argument Long podcastEpisodeSegmentId) {
+		this.podcastService.requestPodcastEpisodeSegmentWaveform(this.mogulService.getCurrentMogul().id(),
+				podcastEpisodeSegmentId);
+		return true;
 	}
 
 	@MutationMapping
@@ -260,6 +282,44 @@ class PodcastController {
 		catch (Exception e) {
 			this.log.warn("couldn't emit a media normalized notification for podcast episode segment # {}", segmentId,
 					e);
+		}
+	}
+
+	@ApplicationModuleListener
+	void onAudioWaveformComputedEvent(AudioWaveformComputedEvent event) {
+		var outcome = new HashMap<String, Object>();
+		outcome.put("success", event.success());
+		if (!event.success())
+			outcome.put("error", event.error());
+		this.notifySegmentClients(event.in().mogulId(), event, event.context(), outcome);
+	}
+
+	@ApplicationModuleListener
+	void onMediaNormalizationFailedEvent(MediaNormalizationFailedEvent event) {
+		this.notifySegmentClients(event.in().mogulId(), event, event.context(), Map.of("error", event.error()));
+	}
+
+	/**
+	 * tells the clients about something that happened to one segment, keyed by its id,
+	 * with the episode and segment ids in the context like the media normalized
+	 * notification.
+	 */
+	private void notifySegmentClients(Long mogulId, Object event, Map<String, Object> context,
+			Map<String, Object> extra) {
+		if (!context.containsKey(DefaultPodcastService.PODCAST_EPISODE_CONTEXT_KEY)
+				|| !context.containsKey(DefaultPodcastService.PODCAST_EPISODE_SEGMENT_CONTEXT_KEY))
+			return;
+		var segmentId = context.get(DefaultPodcastService.PODCAST_EPISODE_SEGMENT_CONTEXT_KEY);
+		try {
+			var payload = new HashMap<String, Object>(extra);
+			payload.put("episodeId", context.get(DefaultPodcastService.PODCAST_EPISODE_CONTEXT_KEY));
+			payload.put("segmentId", segmentId);
+			NotificationEvents.notify(NotificationEvent.systemNotificationEventFor(mogulId, event,
+					String.valueOf(segmentId), JsonUtils.write(payload)));
+		} //
+		catch (Exception e) {
+			this.log.warn("couldn't emit a {} notification for podcast episode segment #{}",
+					event.getClass().getSimpleName(), segmentId, e);
 		}
 	}
 

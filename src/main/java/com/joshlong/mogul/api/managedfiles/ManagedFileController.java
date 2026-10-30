@@ -83,6 +83,14 @@ class ManagedFileController {
 						managedFile.id());
 				return ResponseEntity.notFound().build();
 			}
+		} //
+		else if (!managedFile.mogulId().equals(this.mogulService.getCurrentMogul().id())) {
+			// the private url is for the file's owner. anyone else gets the same answer
+			// as
+			// for a file that doesn't exist, so ids can't be probed.
+			this.log.warn("mogul #{} attempted to read managed file #{}, which belongs to mogul #{}",
+					this.mogulService.getCurrentMogul().id(), managedFile.id(), managedFile.mogulId());
+			return ResponseEntity.notFound().build();
 		}
 		var read = this.managedFileService.read(managedFileId);
 		var contentType = managedFile.contentType();

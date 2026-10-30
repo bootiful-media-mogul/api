@@ -24,6 +24,24 @@ public interface PodcastService {
 
 	Collection<Segment> getPodcastEpisodeSegmentsByIds(List<Long> episodeSegmentIds);
 
+	/**
+	 * the segment, provided it belongs to the mogul.
+	 */
+	Segment getPodcastEpisodeSegmentById(Long mogulId, Long segmentId);
+
+	/**
+	 * records which ranges of the segment's uploaded audio to keep, and renders its
+	 * produced audio from them. null keeps all of it. the render finishes later, with a
+	 * {@code MediaNormalizedEvent}.
+	 */
+	void editPodcastEpisodeSegment(Long mogulId, Long segmentId, List<KeptRange> kept);
+
+	/**
+	 * draws the waveform of the segment's uploaded audio. uploads draw one on their own;
+	 * this is for segments from before they did.
+	 */
+	void requestPodcastEpisodeSegmentWaveform(Long mogulId, Long segmentId);
+
 	Map<Long, List<Segment>> getPodcastEpisodeSegmentsByEpisodes(Collection<Long> episodeIds);
 
 	Map<Long, Long> getPodcastEpisodeDurationsByEpisodes(Collection<Long> episodeIds);
