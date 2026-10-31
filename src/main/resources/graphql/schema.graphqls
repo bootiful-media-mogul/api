@@ -10,6 +10,10 @@ type Setting {
     value: String
     valid: Boolean
     required: Boolean
+    # SECRET, TEXT or BOOLEAN: how the settings page should show it
+    type: String
+    # what an unset value means, if anything
+    defaultValue: String
 }
 
 type Composition  {
@@ -114,6 +118,22 @@ type KeptRange {
     end: Int
 }
 
+type SegmentFilters {
+    fillers: Boolean
+    stutters: Boolean
+    silences: Boolean
+    silenceLongerThan: Int
+    silenceLeave: Int
+}
+
+input SegmentFiltersInput {
+    fillers: Boolean!
+    stutters: Boolean!
+    silences: Boolean!
+    silenceLongerThan: Int!
+    silenceLeave: Int!
+}
+
 input KeptRangeInput {
     start: Int!
     end: Int!
@@ -144,8 +164,23 @@ type Segment {
     producedAudio : ManagedFile
     # the waveform of audio, drawn by the processors. null for older segments until one is requested
     waveform: ManagedFile
-    # the ranges of audio to keep, in milliseconds, in the order they play. null if unedited
+    # the ranges of audio to keep by hand, in milliseconds, in the order they play. null if unedited
     edits: [KeptRange]
+    # cleanvoice's cleaned copy of audio, once there is one for the audio as it is now
+    cleanedAudio: ManagedFile
+    cleaned: Boolean
+    # being cleaned and re-rendered right now
+    cleaning: Boolean
+    # why the last cleaning failed, if it did
+    cleaningError: String
+    # whether clicking can start a cleaning: there's audio, a cleanvoice key, and none running
+    cleanable: Boolean
+    # json, in milliseconds: {"cleanvoice": [{start, end, kind}], "silences": [{start, end}]}
+    detections: String
+    # the automatic cuts in effect: the mogul's choice, or the default from their settings
+    filters: SegmentFilters
+    # ids of detections put back despite the filters, like "FILLER_SOUND@4380"
+    restored: [String]
     order : Int
     crossFadeDuration : Int
     transcript: Transcript
@@ -307,7 +342,9 @@ type Mutation {
     deletePodcastEpisodeSegment(podcastEpisodeSegmentId: Int): Boolean
     createPodcastEpisodeSegment( podcastEpisodeId:  Int ): Int
     # keeps only these ranges of the segment's audio and re-renders it. null keeps all of it
-    editPodcastEpisodeSegment(podcastEpisodeSegmentId: Int, kept: [KeptRangeInput!]): Boolean
+    editPodcastEpisodeSegment(podcastEpisodeSegmentId: Int, kept: [KeptRangeInput!], filters: SegmentFiltersInput, restored: [String!]): Boolean
+    # cleans the segment's audio with the mogul's cleanvoice account
+    cleanPodcastEpisodeSegment(podcastEpisodeSegmentId: Int): Boolean
     requestPodcastEpisodeSegmentWaveform(podcastEpisodeSegmentId: Int): Boolean
     #    setPodcastEpisodeSegmentTranscript(podcastEpisodeSegmentId: Int , transcript: String) : Boolean
     #    transcribePodcastEpisodeSegment(podcastEpisodeSegmentId: Int ) : Boolean

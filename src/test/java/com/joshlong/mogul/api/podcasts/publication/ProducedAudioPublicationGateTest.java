@@ -2,10 +2,14 @@ package com.joshlong.mogul.api.podcasts.publication;
 
 import com.joshlong.mogul.api.PublisherPlugin;
 import com.joshlong.mogul.api.podcasts.Episode;
+import com.joshlong.mogul.api.podcasts.PodcastEpisodeSegmentCleanedEvent;
+import com.joshlong.mogul.api.podcasts.PodcastEpisodeSegmentCleaningFailedEvent;
+import com.joshlong.mogul.api.podcasts.PodcastService;
 import com.joshlong.mogul.api.podcasts.production.PodcastEpisodeRenderFinishedEvent;
 import com.joshlong.mogul.api.podcasts.production.PodcastProducer;
 import com.joshlong.mogul.api.publications.PublicationService;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.Date;
 import java.util.Map;
@@ -22,8 +26,12 @@ class ProducedAudioPublicationGateTest {
 
 	private final PublicationService publicationService = mock(PublicationService.class);
 
+	private final PodcastService podcastService = mock(PodcastService.class);
+
+	private final ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
+
 	private final ProducedAudioPublicationGate gate = new ProducedAudioPublicationGate(this.podcastProducer,
-			this.publicationService);
+			this.publicationService, this.podcastService, this.publisher);
 
 	private static Episode episode(boolean stale) {
 		var assetsUpdated = new Date();
@@ -149,6 +157,64 @@ class ProducedAudioPublicationGateTest {
 
 		assertThat(resumed).hasValue(0);
 		verify(this.publicationService, times(1)).failPublication(any(), anyString());
+	}
+
+	@Test
+	void anEpisodeStillBeingCleanedWaitsWithoutRendering() {
+		when(this.podcastService.isPodcastEpisodeCleaning(42L)).thenReturn(true);
+		var resumed = new AtomicInteger();
+
+		assertThat(this.gate.defer(this.attempt(1L, episode(true), true), resumed::incrementAndGet)).isTrue();
+
+		// rendering now would render the upload, not the cleaned audio
+		verifyNoInteractions(this.podcastProducer);
+		verify(this.publisher).publishEvent(new PodcastEpisodePublicationWaitingForCleaningEvent(1L, 42L));
+		assertThat(resumed).hasValue(0);
+	}
+
+	@Test
+	void theLastSegmentCleanedRendersAndThenPublishes() {
+		when(this.podcastService.isPodcastEpisodeCleaning(42L)).thenReturn(true);
+		var resumed = new AtomicInteger();
+		this.gate.defer(this.attempt(1L, episode(true), true), resumed::incrementAndGet);
+
+		// cleaning re-rendered the segments, so the episode is stale now
+		var cleanedEpisode = episode(true);
+		when(this.podcastService.isPodcastEpisodeCleaning(42L)).thenReturn(false);
+		when(this.podcastService.getPodcastEpisodeById(42L)).thenReturn(cleanedEpisode);
+		this.gate.onSegmentCleaned(new PodcastEpisodeSegmentCleanedEvent(1L, 42L, 7L));
+
+		verify(this.podcastProducer).produce(cleanedEpisode);
+		assertThat(resumed).hasValue(0);
+		this.gate.onRenderFinished(new PodcastEpisodeRenderFinishedEvent(42L, true, null));
+		assertThat(resumed).hasValue(1);
+	}
+
+	@Test
+	void oneSegmentCleanedIsNotEnoughWhileAnotherIsStillGoing() {
+		when(this.podcastService.isPodcastEpisodeCleaning(42L)).thenReturn(true);
+		var resumed = new AtomicInteger();
+		this.gate.defer(this.attempt(1L, episode(true), true), resumed::incrementAndGet);
+
+		this.gate.onSegmentCleaned(new PodcastEpisodeSegmentCleanedEvent(1L, 42L, 7L));
+
+		verifyNoInteractions(this.podcastProducer);
+		assertThat(resumed).hasValue(0);
+	}
+
+	@Test
+	void aFailedCleaningDoesNotHoldPublishingBack() {
+		when(this.podcastService.isPodcastEpisodeCleaning(42L)).thenReturn(true);
+		var resumed = new AtomicInteger();
+		this.gate.defer(this.attempt(1L, episode(true), true), resumed::incrementAndGet);
+
+		// the segment fell back to its upload, which was already rendered
+		when(this.podcastService.isPodcastEpisodeCleaning(42L)).thenReturn(false);
+		when(this.podcastService.getPodcastEpisodeById(42L)).thenReturn(episode(false));
+		this.gate.onSegmentCleaningFailed(new PodcastEpisodeSegmentCleaningFailedEvent(1L, 42L, 7L, "nope", false));
+
+		verifyNoInteractions(this.podcastProducer);
+		assertThat(resumed).hasValue(1);
 	}
 
 }

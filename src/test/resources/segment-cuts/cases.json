@@ -1,0 +1,97 @@
+[
+  {
+    "name": "no detections leaves the hand-kept ranges alone",
+    "duration": 10000, "kept": [[0, 4000], [6000, 10000]], "detections": null,
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[0, 4000], [6000, 10000]]
+  },
+  {
+    "name": "a filler becomes a pause of about 45 percent of it",
+    "duration": 10000, "kept": null,
+    "detections": {"cleanvoice": [{"start": 1000, "end": 1600, "kind": "FILLER_SOUND"}], "silences": []},
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[0, 1270], [1600, 10000]]
+  },
+  {
+    "name": "a short filler keeps at least a tenth of a second",
+    "duration": 5000, "kept": null,
+    "detections": {"cleanvoice": [{"start": 1000, "end": 1150, "kind": "FILLER_SOUND"}], "silences": []},
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[0, 1100], [1150, 5000]]
+  },
+  {
+    "name": "a long filler keeps at most a third of a second",
+    "duration": 5000, "kept": null,
+    "detections": {"cleanvoice": [{"start": 1000, "end": 2000, "kind": "STUTTERING"}], "silences": []},
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[0, 1350], [2000, 5000]]
+  },
+  {
+    "name": "dead air is muted but never cut",
+    "duration": 5000, "kept": null,
+    "detections": {"cleanvoice": [{"start": 1000, "end": 1500, "kind": "DEADAIR"}], "silences": []},
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[0, 5000]]
+  },
+  {
+    "name": "a long silence keeps half the pause at each end",
+    "duration": 60000, "kept": null,
+    "detections": {"cleanvoice": [], "silences": [{"start": 10000, "end": 25000}]},
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[0, 10200], [24800, 60000]]
+  },
+  {
+    "name": "a silence no longer than the threshold stays",
+    "duration": 10000, "kept": null,
+    "detections": {"cleanvoice": [], "silences": [{"start": 3000, "end": 5000}]},
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[0, 10000]]
+  },
+  {
+    "name": "a restored filler stays",
+    "duration": 10000, "kept": null,
+    "detections": {"cleanvoice": [{"start": 1000, "end": 1600, "kind": "FILLER_SOUND"}, {"start": 5000, "end": 5600, "kind": "FILLER_SOUND"}], "silences": []},
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": ["FILLER_SOUND@1000"],
+    "expected": [[0, 5270], [5600, 10000]]
+  },
+  {
+    "name": "filters that are off cut nothing",
+    "duration": 10000, "kept": null,
+    "detections": {"cleanvoice": [{"start": 1000, "end": 1600, "kind": "FILLER_SOUND"}], "silences": [{"start": 3000, "end": 8000}]},
+    "filters": {"fillers": false, "stutters": true, "silences": false, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[0, 10000]]
+  },
+  {
+    "name": "automatic cuts only apply inside what was kept by hand",
+    "duration": 20000, "kept": [[0, 5000], [12000, 20000]],
+    "detections": {"cleanvoice": [{"start": 2000, "end": 2600, "kind": "FILLER_SOUND"}, {"start": 8000, "end": 8600, "kind": "FILLER_SOUND"}], "silences": [{"start": 14000, "end": 18000}]},
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[0, 2270], [2600, 5000], [12000, 14200], [17800, 20000]]
+  },
+  {
+    "name": "a filler inside a long silence merges into one cut",
+    "duration": 20000, "kept": null,
+    "detections": {"cleanvoice": [{"start": 6000, "end": 6600, "kind": "FILLER_SOUND"}], "silences": [{"start": 5000, "end": 9000}]},
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[0, 5200], [8800, 20000]]
+  },
+  {
+    "name": "the hand-kept order is the play order",
+    "duration": 20000, "kept": [[10000, 20000], [0, 5000]],
+    "detections": {"cleanvoice": [{"start": 1000, "end": 1600, "kind": "FILLER_SOUND"}], "silences": []},
+    "filters": {"fillers": true, "stutters": true, "silences": true, "silenceLongerThan": 2000, "silenceLeave": 400},
+    "restored": [],
+    "expected": [[10000, 20000], [0, 1270], [1600, 5000]]
+  }
+]

@@ -34,6 +34,14 @@ class DefaultMediaService implements MediaService {
 
 	static final String WAVEFORM_PROCESSOR_ID = "audioWaveformProcessor";
 
+	static final String CLEANED_AUDIO_INGESTION_PROCESSOR_ID = "cleanedAudioIngestionProcessor";
+
+	private static final String CLEANED_AUDIO_URL = "cleanedAudioUrl";
+
+	private static final String CLEANED_LABELS_URL = "cleanedLabelsUrl";
+
+	private static final String DETECTIONS = "detections";
+
 	// what neither of them looks at, and both hand back untouched
 	static final String INPUT_MANAGED_FILE_ID = "inputManagedFileId";
 
@@ -73,7 +81,8 @@ class DefaultMediaService implements MediaService {
 
 	private final Map<String, Consumer<ProcessorCompletedEvent>> processorHandlers = new ConcurrentHashMap<>(
 			Map.of(NORMALIZATION_PROCESSOR_ID, this::normalized, PRODUCTION_PROCESSOR_ID, this::produced,
-					WAVEFORM_PROCESSOR_ID, this::waveformComputed));
+					WAVEFORM_PROCESSOR_ID, this::waveformComputed, CLEANED_AUDIO_INGESTION_PROCESSOR_ID,
+					this::cleanedAudioIngested));
 
 	DefaultMediaService(Processors processors, ManagedFileService managedFileService,
 			ApplicationEventPublisher publisher, TransactionTemplate transactionTemplate) {
@@ -149,6 +158,19 @@ class DefaultMediaService implements MediaService {
 		this.launch(WAVEFORM_PROCESSOR_ID, request,
 				() -> "could not request the waveform of ManagedFile #" + input.id());
 		this.log.debug("requested the waveform of {} into {}", input.id(), output.id());
+	}
+
+	@Override
+	public void ingestCleanedAudio(String audioUrl, String labelsUrl, ManagedFile output, Map<String, Object> context) {
+		var request = new HashMap<>(context);
+		request.put(CLEANED_AUDIO_URL, audioUrl);
+		request.put(CLEANED_LABELS_URL, labelsUrl);
+		request.put(OUTPUT_BUCKET, output.bucket());
+		request.put(OUTPUT_KEY, output.key());
+		request.put(OUTPUT_MANAGED_FILE_ID, output.id());
+		this.launch(CLEANED_AUDIO_INGESTION_PROCESSOR_ID, request,
+				() -> "could not request the ingestion of cleaned audio into ManagedFile #" + output.id());
+		this.log.debug("requested the ingestion of cleaned audio into {}", output.id());
 	}
 
 	private void launch(String processorId, Map<String, Object> request, Supplier<String> failure) {
@@ -228,6 +250,25 @@ class DefaultMediaService implements MediaService {
 		var out = this.managedFileService.getManagedFileById(outputId);
 		this.publish(new AudioWaveformComputedEvent(in, out, true, null, context));
 		this.log.debug("the waveform of {} has been drawn into {}", in.id(), out.id());
+	}
+
+	private void cleanedAudioIngested(ProcessorCompletedEvent event) {
+		// the signed urls came back in the reply context; they're no use to anyone now
+		var context = new HashMap<>(event.context());
+		context.remove(CLEANED_AUDIO_URL);
+		context.remove(CLEANED_LABELS_URL);
+		var detections = (String) context.remove(DETECTIONS);
+		var outputId = (Long) context.get(OUTPUT_MANAGED_FILE_ID);
+		if (!event.success()) {
+			this.log.warn("ingesting the cleaned audio into ManagedFile #{} failed: {}", outputId, this.reason(event));
+			this.publish(new CleanedAudioIngestedEvent(this.managedFileService.getManagedFileById(outputId), false,
+					this.reason(event), null, context));
+			return;
+		}
+		this.managedFileService.refreshManagedFileFromStorage(outputId, "cleaned.flac",
+				MediaType.parseMediaType("audio/flac"));
+		var out = this.managedFileService.getManagedFileById(outputId);
+		this.publish(new CleanedAudioIngestedEvent(out, true, null, detections, context));
 	}
 
 	private String reason(ProcessorCompletedEvent event) {

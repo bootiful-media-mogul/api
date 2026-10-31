@@ -1,11 +1,17 @@
 package com.joshlong.mogul.api.podcasts;
 
+import com.joshlong.mogul.api.cleanvoice.AudioCleanedEvent;
+import com.joshlong.mogul.api.cleanvoice.AudioCleaning;
+import com.joshlong.mogul.api.cleanvoice.AudioCleaningFailedEvent;
+import com.joshlong.mogul.api.cleanvoice.CleanvoiceSettings;
 import com.joshlong.mogul.api.compositions.Composition;
 import com.joshlong.mogul.api.compositions.CompositionService;
 import com.joshlong.mogul.api.managedfiles.CommonMediaTypes;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.managedfiles.ManagedFileService;
 import com.joshlong.mogul.api.managedfiles.ManagedFileUpdatedEvent;
+import com.joshlong.mogul.api.media.CleanedAudioIngestedEvent;
+import com.joshlong.mogul.api.media.MediaNormalizationFailedEvent;
 import com.joshlong.mogul.api.media.MediaNormalizedEvent;
 import com.joshlong.mogul.api.media.MediaService;
 import com.joshlong.mogul.api.mogul.MogulCreatedEvent;
@@ -20,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.cache.Cache;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataAccessException;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -44,6 +51,24 @@ class DefaultPodcastService implements PodcastService {
 
 	static final String PODCAST_EPISODE_GRAPHIC_CONTEXT_KEY = "podcastEpisodeGraphicId";
 
+	/** the etag of the upload a cleaning started from; anything else is stale */
+	static final String CLEANING_SOURCE_ETAG_CONTEXT_KEY = "cleaningSourceEtag";
+
+	/** marks the render of freshly cleaned audio, after which the segment is done */
+	static final String AFTER_CLEANING_CONTEXT_KEY = "afterCleaning";
+
+	/**
+	 * a cleaning that has been going this long died with whatever node was doing it; it
+	 * shouldn't hold a publication back forever.
+	 */
+	static final long CLEANING_GIVES_UP_AFTER_HOURS = 4;
+
+	/**
+	 * the end of any segment's audio. a kept range only has to end at or after the audio
+	 * does, and the processors stop at the end of the file.
+	 */
+	static final long END_OF_AUDIO = 24L * 60 * 60 * 1000;
+
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	private final PodcastRowMapper podcastRowMapper;
@@ -62,11 +87,18 @@ class DefaultPodcastService implements PodcastService {
 
 	private final TransactionTemplate transactions;
 
+	private final AudioCleaning audioCleaning;
+
+	private final CleanvoiceSettings cleanvoiceSettings;
+
 	private final Comparator<Episode> episodeComparator = Comparator.comparing(Episode::created).reversed();
 
 	DefaultPodcastService(CompositionService compositionService, MediaService mediaService, JdbcClient db,
 			ManagedFileService managedFileService, ApplicationEventPublisher publisher, Cache podcastCache,
-			Cache podcastEpisodesCache, TransactionTemplate transactions) {
+			Cache podcastEpisodesCache, TransactionTemplate transactions, AudioCleaning audioCleaning,
+			CleanvoiceSettings cleanvoiceSettings) {
+		this.audioCleaning = audioCleaning;
+		this.cleanvoiceSettings = cleanvoiceSettings;
 		this.podcastEpisodesCache = podcastEpisodesCache;
 		this.podcastCache = podcastCache;
 		this.compositionService = compositionService;
@@ -160,6 +192,13 @@ class DefaultPodcastService implements PodcastService {
 					.params(normalizedEvent.context().getOrDefault(MediaNormalizedEvent.DURATION_IN_MILLISECONDS, 0L),
 							segmentId)
 					.update();
+				if (Boolean.TRUE.equals(normalizedEvent.context().get(AFTER_CLEANING_CONTEXT_KEY))) {
+					this.db.sql("update podcast_episode_segment set cleaning_started = null where id = ?")
+						.params(segmentId)
+						.update();
+					this.publisher.publishEvent(new PodcastEpisodeSegmentCleanedEvent(normalizedEvent.in().mogulId(),
+							episodeId, segmentId));
+				}
 
 			}
 			this.refreshPodcastEpisodeCompleteness(episodeId);
@@ -198,17 +237,23 @@ class DefaultPodcastService implements PodcastService {
 			// or it's one of the segments
 			for (var segment : segments) {
 				if (segment.audio().id().equals(mf.id())) {
-					// the edits were ranges of the audio this replaces. kept against a
-					// different file they would cut it in arbitrary places.
-					if (segment.edits() != null) {
-						this.db.sql("update podcast_episode_segment set edits = null where id = ?")
-							.params(segment.id())
-							.update();
-						this.invalidatePodcastEpisodeCache(episodeId);
-					}
+					// the edits and detections were positions in the audio this replaces.
+					// kept against a different file they would cut it in arbitrary
+					// places.
+					this.db.sql("""
+							update podcast_episode_segment
+							set edits = null, detections = null, cleaned_from_etag = null, cleaning_error = null
+							where id = ?
+							""").params(segment.id()).update();
+					this.invalidatePodcastEpisodeCache(episodeId);
 					var context = this.segmentContext(segment);
+					// playable straight away, from the upload; the cleaned render
+					// replaces it
 					this.mediaService.normalize(segment.audio(), segment.producedAudio(), context);
 					this.mediaService.waveform(segment.audio(), this.waveformFor(segment), context);
+					var mogulId = segment.audio().mogulId();
+					if (this.cleanvoiceSettings.configured(mogulId))
+						this.startCleaning(mogulId, this.reload(segment));
 				}
 			}
 		}
@@ -265,20 +310,183 @@ class DefaultPodcastService implements PodcastService {
 	}
 
 	@Override
-	public void editPodcastEpisodeSegment(Long mogulId, Long segmentId, List<KeptRange> kept) {
+	public void editPodcastEpisodeSegment(Long mogulId, Long segmentId, List<KeptRange> kept, SegmentFilters filters,
+			Set<String> restored) {
 		var segment = this.ownedSegment(mogulId, segmentId);
 		Assert.state(kept == null || !kept.isEmpty(), "an edit has to keep something; delete the segment instead");
 		Assert.state(segment.audio().written(), "there's no audio to edit until some has been uploaded");
+		Assert.state(!segment.cleaning(), "the segment is being cleaned; it can be edited once that's done");
 		this.db.sql("update podcast_episode_segment set edits = ?::jsonb where id = ?")
-			.params(SegmentEdits.write(kept), segmentId)
+			.params(SegmentEdits.write(kept, filters, restored == null ? Set.of() : restored), segmentId)
 			.update();
 		this.invalidatePodcastEpisodeCache(segment.episodeId());
 		this.markAssetsDirty(segment.episodeId());
-		// the produced audio is rendered from the upload and the edits. the reply
-		// lands in mediaNormalized, same as an upload's, which updates the duration
-		// and the transcript.
-		this.mediaService.normalize(segment.audio(), segment.producedAudio(), SegmentEdits.forProcessors(kept),
-				this.segmentContext(segment));
+		this.render(this.reload(segment), this.segmentContext(segment));
+	}
+
+	@Override
+	public void cleanPodcastEpisodeSegment(Long mogulId, Long segmentId) {
+		var segment = this.ownedSegment(mogulId, segmentId);
+		Assert.state(segment.audio().written(), "there's no audio to clean until some has been uploaded");
+		Assert.state(!segment.cleaning(), "the segment is already being cleaned");
+		Assert.state(this.cleanvoiceSettings.configured(mogulId), "add a cleanvoice api key in settings first");
+		this.startCleaning(mogulId, segment);
+	}
+
+	@Override
+	public boolean isPodcastEpisodeCleaning(Long episodeId) {
+		var cleaning = this.db.sql("""
+				select count(*) from podcast_episode_segment
+				where podcast_episode_id = ? and cleaning_started is not null
+				and cleaning_started > now() - make_interval(hours => ?)
+				""").params(episodeId, (int) CLEANING_GIVES_UP_AFTER_HOURS).query(Long.class).single();
+		return cleaning > 0;
+	}
+
+	/**
+	 * renders the produced audio: from the cleaned audio if there is any for the upload
+	 * as it is now, otherwise from the upload, keeping what was kept by hand minus the
+	 * automatic cuts. the reply lands in mediaNormalized, same as an upload's, which
+	 * updates the duration and the transcript.
+	 */
+	private void render(Segment segment, Map<String, Object> context) {
+		var cleaned = segment.cleaned();
+		var source = cleaned ? segment.cleanedAudio() : segment.audio();
+		var filters = segment.filters();
+		if (filters == null && cleaned)
+			filters = this.cleanvoiceSettings.applyDefaultFilters(segment.audio().mogulId()) ? SegmentFilters.ON
+					: SegmentFilters.OFF;
+		var detections = cleaned ? SegmentDetections.read(segment.detections()) : null;
+		var kept = SegmentCuts.compute(END_OF_AUDIO, segment.edits(), detections, filters, segment.restored());
+		var everything = kept.size() == 1 && kept.getFirst().start() == 0 && kept.getFirst().end() >= END_OF_AUDIO;
+		this.mediaService.normalize(source, segment.producedAudio(), everything ? "" : SegmentEdits.forProcessors(kept),
+				context);
+	}
+
+	private Segment reload(Segment segment) {
+		this.invalidatePodcastEpisodeCache(segment.episodeId());
+		return CollectionUtils.firstOrNull(this.getPodcastEpisodeSegmentsByIds(List.of(segment.id())));
+	}
+
+	private void startCleaning(Long mogulId, Segment segment) {
+		var cleaned = this.cleanedAudioFor(segment);
+		this.db.sql("update podcast_episode_segment set cleaning_started = now(), cleaning_error = null where id = ?")
+			.params(segment.id())
+			.update();
+		this.invalidatePodcastEpisodeCache(segment.episodeId());
+		var context = new HashMap<>(this.segmentContext(segment));
+		context.put(CLEANING_SOURCE_ETAG_CONTEXT_KEY, segment.audio().etag());
+		this.log.debug("cleaning segment #{} into ManagedFile #{}", segment.id(), cleaned.id());
+		this.publisher
+			.publishEvent(new PodcastEpisodeSegmentCleaningStartedEvent(mogulId, segment.episodeId(), segment.id()));
+		this.audioCleaning.clean(mogulId, segment.audio(), context);
+	}
+
+	/**
+	 * the segment as it is now, if the cleaning this context belongs to is still the one
+	 * that counts: the same upload it started from. a re-upload in the meantime started a
+	 * cleaning of its own, and this one's results are about audio that's gone.
+	 */
+	private Segment currentForCleaning(Map<String, Object> context) {
+		// this context has been through jobrunr's tables as json, which brings small
+		// longs
+		// back as integers
+		if (!(context.get(PODCAST_EPISODE_SEGMENT_CONTEXT_KEY) instanceof Number segmentNumber))
+			return null;
+		var segmentId = segmentNumber.longValue();
+		var segment = CollectionUtils.firstOrNull(this.getPodcastEpisodeSegmentsByIds(List.of(segmentId)));
+		if (segment == null)
+			return null;
+		var etag = context.get(CLEANING_SOURCE_ETAG_CONTEXT_KEY);
+		if (etag == null || !etag.equals(segment.audio().etag())) {
+			this.log.debug("ignoring the result of a stale cleaning of segment #{}", segmentId);
+			return null;
+		}
+		return segment;
+	}
+
+	@ApplicationModuleListener
+	void audioCleaned(AudioCleanedEvent event) {
+		var segment = this.currentForCleaning(event.context());
+		if (segment == null)
+			return;
+		var context = new HashMap<>(this.segmentContext(segment));
+		context.put(CLEANING_SOURCE_ETAG_CONTEXT_KEY, segment.audio().etag());
+		this.mediaService.ingestCleanedAudio(event.audioUrl(), event.labelsUrl(), this.cleanedAudioFor(segment),
+				context);
+	}
+
+	@ApplicationModuleListener
+	void audioCleaningFailed(AudioCleaningFailedEvent event) {
+		var segment = this.currentForCleaning(event.context());
+		if (segment != null)
+			this.cleaningFailed(segment, event.reason(), event.actionRequired());
+	}
+
+	@ApplicationModuleListener
+	void cleanedAudioIngested(CleanedAudioIngestedEvent event) {
+		var segment = this.currentForCleaning(event.context());
+		if (segment == null)
+			return;
+		if (!event.success()) {
+			this.cleaningFailed(segment, event.error(), false);
+			return;
+		}
+		this.db.sql("update podcast_episode_segment set detections = ?::jsonb, cleaned_from_etag = ? where id = ?")
+			.params(event.detections(), event.context().get(CLEANING_SOURCE_ETAG_CONTEXT_KEY), segment.id())
+			.update();
+		var fresh = this.reload(segment);
+		this.markAssetsDirty(fresh.episodeId());
+		var context = this.segmentContext(fresh);
+		// the editor draws what it plays, and from now on it plays the cleaned audio
+		this.mediaService.waveform(fresh.cleanedAudio(), this.waveformFor(fresh), context);
+		var afterCleaning = new HashMap<>(context);
+		afterCleaning.put(AFTER_CLEANING_CONTEXT_KEY, true);
+		this.render(fresh, afterCleaning);
+	}
+
+	@ApplicationModuleListener
+	void cleanedRenderFailed(MediaNormalizationFailedEvent event) {
+		if (!Boolean.TRUE.equals(event.context().get(AFTER_CLEANING_CONTEXT_KEY))
+				|| !(event.context().get(PODCAST_EPISODE_SEGMENT_CONTEXT_KEY) instanceof Number segmentId))
+			return;
+		var segment = CollectionUtils.firstOrNull(this.getPodcastEpisodeSegmentsByIds(List.of(segmentId.longValue())));
+		if (segment != null)
+			this.cleaningFailed(segment, event.error(), false);
+	}
+
+	/**
+	 * the fallback: the segment keeps the audio rendered from its upload, and can be
+	 * edited, and says why it isn't clean.
+	 */
+	private void cleaningFailed(Segment segment, String reason, boolean actionRequired) {
+		this.db.sql("update podcast_episode_segment set cleaning_started = null, cleaning_error = ? where id = ?")
+			.params(reason, segment.id())
+			.update();
+		this.invalidatePodcastEpisodeCache(segment.episodeId());
+		this.publisher.publishEvent(new PodcastEpisodeSegmentCleaningFailedEvent(segment.audio().mogulId(),
+				segment.episodeId(), segment.id(), reason, actionRequired));
+	}
+
+	/**
+	 * the segment's cleaned audio file, created on first use. racing creators resolve the
+	 * same way as {@link #waveformFor}.
+	 */
+	private ManagedFile cleanedAudioFor(Segment segment) {
+		if (segment.cleanedAudio() != null)
+			return segment.cleanedAudio();
+		var audio = segment.audio();
+		var created = this.managedFileService.createManagedFile(audio.mogulId(), audio.folder(), "cleaned.flac", 0,
+				MediaType.parseMediaType("audio/flac"), false);
+		var claimed = this.db.sql(
+				"update podcast_episode_segment set cleaned_audio_managed_file_id = ? where id = ? and cleaned_audio_managed_file_id is null")
+			.params(created.id(), segment.id())
+			.update();
+		this.invalidatePodcastEpisodeCache(segment.episodeId());
+		if (claimed == 1)
+			return created;
+		this.managedFileService.deleteManagedFile(created.id());
+		return Objects.requireNonNull(this.reload(segment).cleanedAudio());
 	}
 
 	@Override
@@ -486,6 +694,8 @@ class DefaultPodcastService implements PodcastService {
 		var managedFilesToDelete = new HashSet<>(Set.of(segment.audio().id(), segment.producedAudio().id()));
 		if (segment.waveform() != null)
 			managedFilesToDelete.add(segment.waveform().id());
+		if (segment.cleanedAudio() != null)
+			managedFilesToDelete.add(segment.cleanedAudio().id());
 		this.markPodcastEpisodeBySegmentAssetsDirty(episodeSegmentId);
 		this.db.sql("delete from podcast_episode_segment where id =?").params(episodeSegmentId).update();
 		for (var managedFileId : managedFilesToDelete)
@@ -836,22 +1046,28 @@ class DefaultPodcastService implements PodcastService {
 		@Override
 		public List<Segment> extractData(ResultSet rs) throws SQLException, DataAccessException {
 			// every row first, then every managed file they mention in one lookup
-			record Row(Long episodeId, Long id, Long audio, Long producedAudio, Long waveform, String edits,
+			record Row(Long episodeId, Long id, Long audio, Long producedAudio, Long waveform, Long cleanedAudio,
+					String edits, String detections, String cleanedFromEtag, Date cleaningStarted, String cleaningError,
 					long crossFadeDuration, String name, int order, long duration) {
 			}
 			var rows = new ArrayList<Row>();
 			var managedFileIds = new HashSet<Long>();
 			while (rs.next()) {
-				var waveform = rs.getObject("waveform_managed_file_id", Long.class);
 				var row = new Row(rs.getLong("podcast_episode_id"), rs.getLong("id"),
 						rs.getLong("segment_audio_managed_file_id"),
-						rs.getLong("produced_segment_audio_managed_file_id"), waveform, rs.getString("edits"),
+						rs.getLong("produced_segment_audio_managed_file_id"),
+						rs.getObject("waveform_managed_file_id", Long.class),
+						rs.getObject("cleaned_audio_managed_file_id", Long.class), rs.getString("edits"),
+						rs.getString("detections"), rs.getString("cleaned_from_etag"),
+						rs.getTimestamp("cleaning_started"), rs.getString("cleaning_error"),
 						rs.getLong("cross_fade_duration"), rs.getString("name"), rs.getInt("sequence_number"),
 						rs.getLong("duration"));
 				managedFileIds.add(row.audio());
 				managedFileIds.add(row.producedAudio());
-				if (waveform != null)
-					managedFileIds.add(waveform);
+				if (row.waveform() != null)
+					managedFileIds.add(row.waveform());
+				if (row.cleanedAudio() != null)
+					managedFileIds.add(row.cleanedAudio());
 				rows.add(row);
 			}
 			var managedFiles = this.managedFileFunction.apply(managedFileIds);
@@ -860,7 +1076,10 @@ class DefaultPodcastService implements PodcastService {
 				result.add(new Segment(row.episodeId(), row.id(), managedFiles.get(row.audio()),
 						managedFiles.get(row.producedAudio()),
 						row.waveform() == null ? null : managedFiles.get(row.waveform()),
-						SegmentEdits.read(row.edits()), row.crossFadeDuration(), row.name(), row.order(),
+						row.cleanedAudio() == null ? null : managedFiles.get(row.cleanedAudio()),
+						SegmentEdits.read(row.edits()), SegmentEdits.readFilters(row.edits()),
+						SegmentEdits.readRestored(row.edits()), row.detections(), row.cleanedFromEtag(),
+						row.cleaningStarted(), row.cleaningError(), row.crossFadeDuration(), row.name(), row.order(),
 						row.duration()));
 			return result;
 		}

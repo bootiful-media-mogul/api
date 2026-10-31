@@ -1,12 +1,15 @@
 package com.joshlong.mogul.api.podcasts;
 
 import com.joshlong.mogul.api.Transcript;
+import com.joshlong.mogul.api.cleanvoice.CleanvoiceSettings;
 import com.joshlong.mogul.api.compositions.Composition;
+import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.media.AudioWaveformComputedEvent;
 import com.joshlong.mogul.api.media.MediaNormalizationFailedEvent;
 import com.joshlong.mogul.api.media.MediaNormalizedEvent;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.notifications.NotificationEvent;
+import com.joshlong.mogul.api.podcasts.publication.PodcastEpisodePublicationWaitingForCleaningEvent;
 import com.joshlong.mogul.api.notifications.NotificationEvents;
 import com.joshlong.mogul.api.transcripts.TranscriptService;
 import com.joshlong.mogul.utils.DateUtils;
@@ -25,7 +28,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Controller
-@RegisterReflectionForBinding({ Map.class, KeptRange.class })
+@RegisterReflectionForBinding({ Map.class, KeptRange.class, SegmentFilters.class })
 class PodcastController {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
@@ -36,10 +39,14 @@ class PodcastController {
 
 	private final TranscriptService transcriptService;
 
-	PodcastController(MogulService mogulService, PodcastService podcastService, TranscriptService transcriptService) {
+	private final CleanvoiceSettings cleanvoiceSettings;
+
+	PodcastController(MogulService mogulService, PodcastService podcastService, TranscriptService transcriptService,
+			CleanvoiceSettings cleanvoiceSettings) {
 		this.mogulService = mogulService;
 		this.podcastService = podcastService;
 		this.transcriptService = transcriptService;
+		this.cleanvoiceSettings = cleanvoiceSettings;
 	}
 
 	@QueryMapping
@@ -91,10 +98,59 @@ class PodcastController {
 	}
 
 	@MutationMapping
-	boolean editPodcastEpisodeSegment(@Argument Long podcastEpisodeSegmentId, @Argument List<KeptRange> kept) {
+	boolean editPodcastEpisodeSegment(@Argument Long podcastEpisodeSegmentId, @Argument List<KeptRange> kept,
+			@Argument SegmentFilters filters, @Argument List<String> restored) {
 		this.podcastService.editPodcastEpisodeSegment(this.mogulService.getCurrentMogul().id(), podcastEpisodeSegmentId,
-				kept);
+				kept, filters, restored == null ? Set.of() : new HashSet<>(restored));
 		return true;
+	}
+
+	@MutationMapping
+	boolean cleanPodcastEpisodeSegment(@Argument Long podcastEpisodeSegmentId) {
+		this.podcastService.cleanPodcastEpisodeSegment(this.mogulService.getCurrentMogul().id(),
+				podcastEpisodeSegmentId);
+		return true;
+	}
+
+	@SchemaMapping
+	Boolean cleaned(Segment segment) {
+		return segment.cleaned();
+	}
+
+	@SchemaMapping
+	Boolean cleaning(Segment segment) {
+		return segment.cleaning();
+	}
+
+	@SchemaMapping
+	ManagedFile cleanedAudio(Segment segment) {
+		return segment.cleaned() ? segment.cleanedAudio() : null;
+	}
+
+	@SchemaMapping
+	String detections(Segment segment) {
+		return segment.cleaned() ? segment.detections() : null;
+	}
+
+	@SchemaMapping
+	Boolean cleanable(Segment segment) {
+		return segment.audio() != null && segment.audio().written() && !segment.cleaning()
+				&& this.cleanvoiceSettings.configured(segment.audio().mogulId());
+	}
+
+	@SchemaMapping
+	SegmentFilters filters(Segment segment) {
+		if (segment.filters() != null)
+			return segment.filters();
+		if (!segment.cleaned())
+			return SegmentFilters.OFF;
+		return this.cleanvoiceSettings.applyDefaultFilters(segment.audio().mogulId()) ? SegmentFilters.ON
+				: SegmentFilters.OFF;
+	}
+
+	@SchemaMapping
+	List<String> restored(Segment segment) {
+		return segment.restored() == null ? List.of() : segment.restored().stream().sorted().toList();
 	}
 
 	@MutationMapping
@@ -282,6 +338,56 @@ class PodcastController {
 		catch (Exception e) {
 			this.log.warn("couldn't emit a media normalized notification for podcast episode segment # {}", segmentId,
 					e);
+		}
+	}
+
+	@ApplicationModuleListener
+	void onSegmentCleaningStarted(PodcastEpisodeSegmentCleaningStartedEvent event) {
+		this.notifyAboutSegment(event.mogulId(), event, event.episodeId(), event.segmentId(), Map.of(), false);
+	}
+
+	@ApplicationModuleListener
+	void onPublicationWaitingForCleaning(PodcastEpisodePublicationWaitingForCleaningEvent event) {
+		try {
+			NotificationEvents.notify(NotificationEvent.visibleNotificationEventFor(event.mogulId(), event,
+					String.valueOf(event.episodeId()), JsonUtils.write(Map.of("episodeId", event.episodeId()))));
+		} //
+		catch (Exception e) {
+			this.log.warn("couldn't say that episode #{} is waiting for cleaning", event.episodeId(), e);
+		}
+	}
+
+	@ApplicationModuleListener
+	void onSegmentCleaned(PodcastEpisodeSegmentCleanedEvent event) {
+		this.notifyAboutSegment(event.mogulId(), event, event.episodeId(), event.segmentId(), Map.of(), false);
+	}
+
+	/**
+	 * a modal when the mogul has to do something about it -- a key cleanvoice won't take,
+	 * an account out of credit -- and a toaster otherwise: the segment falls back to its
+	 * upload on its own.
+	 */
+	@ApplicationModuleListener
+	void onSegmentCleaningFailed(PodcastEpisodeSegmentCleaningFailedEvent event) {
+		this.notifyAboutSegment(event.mogulId(), event, event.episodeId(), event.segmentId(),
+				Map.of("reason", String.valueOf(event.reason()), "actionRequired", event.actionRequired()),
+				event.actionRequired());
+	}
+
+	private void notifyAboutSegment(Long mogulId, Object event, Long episodeId, Long segmentId,
+			Map<String, Object> extra, boolean modal) {
+		try {
+			var payload = new HashMap<String, Object>(extra);
+			payload.put("episodeId", episodeId);
+			payload.put("segmentId", segmentId);
+			var json = JsonUtils.write(payload);
+			var key = String.valueOf(segmentId);
+			NotificationEvents.notify(modal ? NotificationEvent.modalNotificationEventFor(mogulId, event, key, json)
+					: NotificationEvent.visibleNotificationEventFor(mogulId, event, key, json));
+		} //
+		catch (Exception e) {
+			this.log.warn("couldn't emit a {} notification for podcast episode segment #{}",
+					event.getClass().getSimpleName(), segmentId, e);
 		}
 	}
 

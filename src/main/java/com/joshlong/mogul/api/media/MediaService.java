@@ -29,6 +29,12 @@ public interface MediaService {
 	void waveform(ManagedFile input, ManagedFile output, Map<String, Object> context);
 
 	/**
+	 * fetches cleanvoice's cleaned audio into {@code output} and finds what's in it.
+	 * finishes with a {@link CleanedAudioIngestedEvent}.
+	 */
+	void ingestCleanedAudio(String audioUrl, String labelsUrl, ManagedFile output, Map<String, Object> context);
+
+	/**
 	 * joins {@code inputs}, in order, into one mp3 written over {@code output}. finishes
 	 * with an {@link AudioProducedEvent}.
 	 */
