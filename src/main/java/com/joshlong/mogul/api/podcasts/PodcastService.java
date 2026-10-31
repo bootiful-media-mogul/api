@@ -7,6 +7,7 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public interface PodcastService {
 
@@ -23,6 +24,39 @@ public interface PodcastService {
 	void deletePodcastEpisodeSegment(Long episodeSegmentId);
 
 	Collection<Segment> getPodcastEpisodeSegmentsByIds(List<Long> episodeSegmentIds);
+
+	/**
+	 * the segment, provided it belongs to the mogul.
+	 */
+	Segment getPodcastEpisodeSegmentById(Long mogulId, Long segmentId);
+
+	/**
+	 * records which ranges of the segment's audio to keep by hand, which automatic cuts
+	 * to make and which detections to put back, and renders its produced audio from them.
+	 * null kept ranges keep all of it. the render finishes later, with a
+	 * {@code MediaNormalizedEvent}.
+	 */
+	void editPodcastEpisodeSegment(Long mogulId, Long segmentId, List<KeptRange> kept, SegmentFilters filters,
+			Set<String> restored);
+
+	/**
+	 * cleans the segment's audio with the mogul's cleanvoice account. uploads do this on
+	 * their own; this is for segments uploaded before the mogul had a key, or whose last
+	 * cleaning failed.
+	 */
+	void cleanPodcastEpisodeSegment(Long mogulId, Long segmentId);
+
+	/**
+	 * whether any of the episode's segments is still being cleaned and re-rendered.
+	 * publishing waits until none are.
+	 */
+	boolean isPodcastEpisodeCleaning(Long episodeId);
+
+	/**
+	 * draws the waveform of the segment's uploaded audio. uploads draw one on their own;
+	 * this is for segments from before they did.
+	 */
+	void requestPodcastEpisodeSegmentWaveform(Long mogulId, Long segmentId);
 
 	Map<Long, List<Segment>> getPodcastEpisodeSegmentsByEpisodes(Collection<Long> episodeIds);
 

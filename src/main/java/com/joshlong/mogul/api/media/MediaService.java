@@ -16,6 +16,25 @@ public interface MediaService {
 	void normalize(ManagedFile input, ManagedFile output, Map<String, Object> context);
 
 	/**
+	 * like {@link #normalize(ManagedFile, ManagedFile, Map)}, but keeps only
+	 * {@code keptRanges} of the input, back to back: {@code start-end} pairs in
+	 * milliseconds separated by commas, {@code 0-30000,60000-234960}. empty keeps it all.
+	 */
+	void normalize(ManagedFile input, ManagedFile output, String keptRanges, Map<String, Object> context);
+
+	/**
+	 * draws the waveform of the audio in {@code input} into {@code output}. finishes with
+	 * an {@link AudioWaveformComputedEvent}.
+	 */
+	void waveform(ManagedFile input, ManagedFile output, Map<String, Object> context);
+
+	/**
+	 * fetches cleanvoice's cleaned audio into {@code output} and finds what's in it.
+	 * finishes with a {@link CleanedAudioIngestedEvent}.
+	 */
+	void ingestCleanedAudio(String audioUrl, String labelsUrl, ManagedFile output, Map<String, Object> context);
+
+	/**
 	 * joins {@code inputs}, in order, into one mp3 written over {@code output}. finishes
 	 * with an {@link AudioProducedEvent}.
 	 */
