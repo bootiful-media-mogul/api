@@ -143,8 +143,8 @@ class Ayrshare {
 		@Override
 		public void registerHints(@NonNull RuntimeHints hints, ClassLoader classLoader) {
 			var mcs = MemberCategory.values();
-			for (var c : new Class<?>[] { JsonNode.class, Response.class, PostContext.class, Response.class,
-					Response.Post.class, Response.Status.class, Platform.class })
+			for (var c : new Class<?>[] { JsonNode.class, Response.class, PostContext.class, Response.Post.class,
+					Response.Status.class, Platform.class })
 				hints.reflection().registerType(c, mcs);
 
 		}

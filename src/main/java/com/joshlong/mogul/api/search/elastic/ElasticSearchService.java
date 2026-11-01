@@ -10,11 +10,6 @@ import com.joshlong.mogul.utils.ReflectionUtils;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.aot.hint.MemberCategory;
-import org.springframework.aot.hint.RuntimeHints;
-import org.springframework.aot.hint.RuntimeHintsRegistrar;
-import org.springframework.aot.hint.TypeReference;
-import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.elasticsearch.annotations.DateFormat;
@@ -38,7 +33,6 @@ interface DocumentRepository extends ElasticsearchRepository<Document, String> {
 }
 
 @Service
-@ImportRuntimeHints(ElasticSearchService.Hints.class)
 @SuppressWarnings("unchecked")
 class ElasticSearchService extends AbstractDomainService<Searchable, SearchableResolver<?>> implements SearchService {
 
@@ -159,16 +153,6 @@ class ElasticSearchService extends AbstractDomainService<Searchable, SearchableR
 		var transcribable = Objects.requireNonNull(repo).find(event.transcribableId());
 		Assert.notNull(transcribable, "the transcribable id " + event.transcribableId() + " was null!");
 		this.index(transcribable);
-	}
-
-	static class Hints implements RuntimeHintsRegistrar {
-
-		@Override
-		public void registerHints(RuntimeHints hints, @Nullable ClassLoader classLoader) {
-			var values = MemberCategory.values();
-			hints.reflection().registerType(TypeReference.of(javax.net.ssl.SSLParameters.class), values);
-		}
-
 	}
 
 }

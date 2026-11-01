@@ -1,23 +1,12 @@
 package com.joshlong.mogul.api.jobs;
 
 import org.jobrunr.scheduling.JobRequestScheduler;
-import org.jobrunr.storage.sql.postgres.PostgresStorageProvider;
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.aot.hint.MemberCategory;
-import org.springframework.aot.hint.RuntimeHints;
-import org.springframework.aot.hint.RuntimeHintsRegistrar;
-import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.ImportRuntimeHints;
-import org.springframework.core.type.filter.AssignableTypeFilter;
 import org.springframework.util.Assert;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 class DefaultJobs implements Jobs {
 
@@ -50,46 +39,6 @@ class DefaultJobs implements Jobs {
 		attributes.put(Job.MOGUL_ID_KEY, mogulId);
 		var id = this.jobScheduler.enqueue(new MogulJobRequest(jobName, mogulId, attributes));
 		this.log.debug("enqueued the job named [{}] for mogul [{}] as [{}]", jobName, mogulId, id);
-	}
-
-}
-
-@ImportRuntimeHints(DefaultJobsConfiguration.Hints.class)
-@Configuration
-class DefaultJobsConfiguration {
-
-	private static <T> Set<Class<? extends T>> findSubclasses(Class<T> targetInterface, String basePackage) {
-		var subclasses = new HashSet<Class<? extends T>>();
-		var provider = new ClassPathScanningCandidateComponentProvider(false);
-		provider.addIncludeFilter(new AssignableTypeFilter(targetInterface));
-		var candidates = provider.findCandidateComponents(basePackage);
-		for (var bd : candidates) {
-			try {
-				var clazz = Class.forName(bd.getBeanClassName());
-				if (!clazz.isInterface() && targetInterface.isAssignableFrom(clazz)) {
-					subclasses.add(clazz.asSubclass(targetInterface));
-				}
-			} //
-			catch (ClassNotFoundException e) {
-				// Handle or log class loading errors
-			}
-		}
-
-		return subclasses;
-	}
-
-	static class Hints implements RuntimeHintsRegistrar {
-
-		@Override
-		public void registerHints(RuntimeHints hints, @Nullable ClassLoader classLoader) {
-
-			// for (var c : findSubclasses(StorageProvider.class,
-			// StorageProvider.class.getPackageName()))
-			// IO.println("class: " + c.getName());
-
-			hints.reflection().registerType(PostgresStorageProvider.class, MemberCategory.values());
-		}
-
 	}
 
 }
