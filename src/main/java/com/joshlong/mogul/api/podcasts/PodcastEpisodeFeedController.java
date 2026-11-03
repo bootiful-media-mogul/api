@@ -20,8 +20,10 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.TransformerException;
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,16 +33,18 @@ class PodcastEpisodeFeedController {
 
 	private static final String PODCAST_FEED_URL = "/public/feeds/moguls/{mogulId}/podcasts/{podcastId}/episodes.atom";
 
-	private final Comparator<Publication> publicationComparator = ((Comparator<Publication>) (o1, o2) -> {
-		if (o1 != null && o2 != null) {
-			if (o1.published() != null && o2.published() != null)
-				return o1.published().compareTo(o2.published());
-			if (o1.created() != null && o2.created() != null)
-				return o1.created().compareTo(o2.created());
-		}
-		return 0;
-	})//
-		.reversed();
+	/**
+	 * the plugins whose links make the best home for an episode, best first. an episode
+	 * is usually published to podbean, then to a blog post, then shared on social media,
+	 * and the social shares - one outcome for each network - are the least useful link of
+	 * all, so any plugin not named here comes last. these are the names stored in each
+	 * publication's {@code plugin} column.
+	 */
+	private static final List<String> PREFERRED_PLUGINS = List.of("podbean", "podcastEpisodeToBlogPost");
+
+	private final Comparator<Publication> publicationComparator = Comparator
+		.comparingInt((Publication publication) -> preference(publication.plugin()))
+		.thenComparing(Publication::created, Comparator.nullsLast(Comparator.reverseOrder()));
 
 	private final PodcastService podcastService;
 
@@ -88,9 +92,12 @@ class PodcastEpisodeFeedController {
 				url = url.replace(key, Long.toString(k.getValue()));
 			}
 		}
+		var publications = this.publicationService.getPublicationsByPublicationKeysAndClass(
+				episodes.stream().map(Episode::publishableId).toList(), Episode.class);
 		var episodeIdToPublicationUrl = new HashMap<Long, String>();
 		for (var e : episodes) {
-			var publicationUrl = publicationUrl(e);
+			var publicationUrl = e.complete() ? publicationUrl(publications.getOrDefault(e.publishableId(), List.of()))
+					: null;
 			if (StringUtils.hasText(publicationUrl)) {
 				episodeIdToPublicationUrl.put(e.id(), publicationUrl);
 			}
@@ -101,23 +108,20 @@ class PodcastEpisodeFeedController {
 				longToUuid(podcastId).toString(), publishedEpisodes, mapper);
 	}
 
-	private String publicationUrl(Episode episode) {
-		var publications = this.publicationService.getPublicationsByPublicationKeyAndClass(episode.publishableId(),
-				Episode.class);
-		if (episode.complete() && !publications.isEmpty()) {
-			var publication = publications//
-				.stream()//
-				.sorted(this.publicationComparator)//
-				.toList()
-				.getFirst();
-			var outcomes = publication.outcomes();
-			if (outcomes.size() == 1) {
-				var first = outcomes.getFirst();
-				if (first.url() != null)
-					return first.url().toString();
-			}
-		}
-		return null;
+	private static int preference(String plugin) {
+		var index = PREFERRED_PLUGINS.indexOf(plugin);
+		return index == -1 ? PREFERRED_PLUGINS.size() : index;
+	}
+
+	private String publicationUrl(Collection<Publication> publications) {
+		return publications.stream()
+			.filter(publication -> publication.state() == Publication.State.PUBLISHED)
+			.sorted(this.publicationComparator)
+			.flatMap(publication -> publication.outcomes().stream())
+			.filter(outcome -> outcome.success() && outcome.url() != null)
+			.map(outcome -> outcome.url().toString())
+			.findFirst()
+			.orElse(null);
 	}
 
 	private class PodcastEpisodeEntryMapper implements EntryMapper<Episode> {

@@ -1,6 +1,7 @@
 package com.joshlong.mogul.api.podcasts;
 
 import com.joshlong.mogul.api.Publication;
+import com.joshlong.mogul.api.feeds.Feeds;
 import com.joshlong.mogul.api.managedfiles.CommonMediaTypes;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.managedfiles.ManagedFileService;
@@ -12,14 +13,24 @@ import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.w3c.dom.Element;
+import org.xml.sax.InputSource;
+
+import javax.xml.parsers.DocumentBuilderFactory;
 
 import java.io.File;
+import java.io.StringReader;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -44,44 +55,88 @@ class PodcastEpisodeFeedTest {
 	}
 
 	@Test
-    void feed() throws Exception {
-        var mogulId = 1L;
-        var podcastId = 1L;
-        var mogul = new Mogul(mogulId, "jlong",
-                "josh@joshlong.com", "clientId",
-                "Josh", "Long", new Date(), "UTC");
-        var podcast = new Podcast(mogul.id(),
-                podcastId, "the title", new Date());
-        var episodes = List.of(
-                nextEpisode(mogulId, podcastId),
-                nextEpisode(mogulId, podcastId),
-                nextEpisode(mogulId, podcastId)
-        );
+	void feed() throws Exception {
+		var mogulId = 1L;
+		var podcastId = 1L;
+		var mogul = new Mogul(mogulId, "jlong", "josh@joshlong.com", "clientId", "Josh", "Long", new Date(), "UTC");
+		var podcast = new Podcast(mogul.id(), podcastId, "the title", new Date());
+		var sharedEverywhere = nextEpisode(mogulId, podcastId, true);
+		var blogged = nextEpisode(mogulId, podcastId, true);
+		var neverPublished = nextEpisode(mogulId, podcastId, true);
+		var incomplete = nextEpisode(mogulId, podcastId, false);
+		var episodes = List.of(sharedEverywhere, blogged, neverPublished, incomplete);
 
-        when(managedFileService.getPublicUrlForManagedFile(Mockito.anyLong()))
-                .thenAnswer((Answer<String>) invocationOnMock -> {
-                    var args = invocationOnMock.getArguments();
-                    return "/public/managedfiles/" + args[0];
-                });
-        when(mogulService.getMogulById(mogulId)).thenReturn(mogul);
-        when(podcastService.getPodcastById(podcastId)).thenReturn(podcast);
-        when(podcastService.getPodcastEpisodesByPodcast(podcastId, true)).thenReturn(episodes);
-        for (var episode : episodes)
-            when(publicationService.getPublicationsByPublicationKeyAndClass(episode.id(),
-                    Episode.class)).thenReturn(List.of(new Publication(mogulId, counter.incrementAndGet(),
-                    "mock", new Date(), new Date(), Map.of(), "", Episode.class,
-                    Publication.State.PUBLISHED, List.of(new Publication.Outcome(0, new Date(), true, URI.create("https://bootifulpodcast.fm/episodes/" + episode.id()).toURL(),
-                    "mock", null, null)))));
+		when(this.managedFileService.getPublicUrlForManagedFile(Mockito.anyLong()))
+			.thenAnswer((Answer<String>) invocation -> "/public/managedfiles/" + invocation.getArguments()[0]);
+		when(this.mogulService.getMogulById(mogulId)).thenReturn(mogul);
+		when(this.podcastService.getPodcastById(podcastId)).thenReturn(podcast);
+		when(this.podcastService.getPodcastEpisodesByPodcast(podcastId, true)).thenReturn(episodes);
 
-    }
+		var publications = new HashMap<Long, Collection<Publication>>();
+		// the social share comes last, and has one outcome for each network: it mustn't
+		// hide the episode, or win out over the podbean link.
+		publications.put(sharedEverywhere.id(),
+				List.of(publication("podcastEpisodeAyrshare", 3, Publication.State.PUBLISHED, "https://bsky.app/post/1",
+						"https://www.linkedin.com/post/1"),
+						publication("podcastEpisodeToBlogPost", 2, Publication.State.PUBLISHED,
+								"https://studio.mogul.tools/blogs/1/posts/1"),
+						publication("podbean", 1, Publication.State.PUBLISHED,
+								"https://bootifulpodcast.podbean.com/e/shared-everywhere/"),
+						publication("podbean", 0, Publication.State.UNPUBLISHED,
+								"https://bootifulpodcast.podbean.com/e/gone/")));
+		publications.put(blogged.id(), List.of(publication("podcastEpisodeToBlogPost", 1, Publication.State.PUBLISHED,
+				"https://studio.mogul.tools/blogs/1/posts/2")));
+		publications.put(neverPublished.id(), List.of(publication("podbean", 1, Publication.State.DRAFT)));
+		publications.put(incomplete.id(), List.of(publication("podbean", 1, Publication.State.PUBLISHED,
+				"https://bootifulpodcast.podbean.com/e/incomplete/")));
+		when(this.publicationService.getPublicationsByPublicationKeysAndClass(Mockito.anyCollection(),
+				Mockito.eq(Episode.class)))
+			.thenReturn(publications);
 
-	private Episode nextEpisode(long mogulId, long podcastId) throws Exception {
+		var controller = new PodcastEpisodeFeedController(this.podcastService, this.publicationService,
+				this.mogulService, new Feeds("mogul-feeds", "http://api.mogul.tools"), this.managedFileService);
+		var feed = controller.feed(new MockHttpServletRequest("GET", "/"), mogulId, podcastId);
+
+		var links = links(feed);
+		assertThat(links).containsExactly("https://bootifulpodcast.podbean.com/e/shared-everywhere/",
+				"https://studio.mogul.tools/blogs/1/posts/2");
+	}
+
+	private Publication publication(String plugin, int minutesAgo, Publication.State state, String... urls)
+			throws Exception {
+		var when = new Date(System.currentTimeMillis() - minutesAgo * 60_000L);
+		var outcomes = new ArrayList<Publication.Outcome>();
+		for (var url : urls)
+			outcomes.add(new Publication.Outcome(0, when, true, URI.create(url).toURL(), plugin, null, null));
+		return new Publication(1L, this.counter.incrementAndGet(), plugin, when, when, Map.of(), "", Episode.class,
+				state, outcomes);
+	}
+
+	// the entry links that aren't the thumbnail enclosure, in order
+	private static List<String> links(String feed) throws Exception {
+		var factory = DocumentBuilderFactory.newInstance();
+		factory.setNamespaceAware(true);
+		var document = factory.newDocumentBuilder().parse(new InputSource(new StringReader(feed)));
+		var entries = document.getElementsByTagNameNS("http://www.w3.org/2005/Atom", "entry");
+		var links = new ArrayList<String>();
+		for (var i = 0; i < entries.getLength(); i++) {
+			var entryLinks = ((Element) entries.item(i)).getElementsByTagNameNS("http://www.w3.org/2005/Atom", "link");
+			for (var j = 0; j < entryLinks.getLength(); j++) {
+				var link = (Element) entryLinks.item(j);
+				if (!link.hasAttribute("rel"))
+					links.add(link.getAttribute("href"));
+			}
+		}
+		return links;
+	}
+
+	private Episode nextEpisode(long mogulId, long podcastId, boolean complete) throws Exception {
 		var nextId = counter.incrementAndGet();
 		var producedAudio = nextManagedFile(mogulId, true, CommonMediaTypes.MP3.toString());
 		var graphic = nextManagedFile(mogulId, true, MediaType.IMAGE_JPEG_VALUE);
 		var producedGraphic = nextManagedFile(mogulId, true, MediaType.IMAGE_JPEG_VALUE);
 		return new Episode(nextId, podcastId, "the title for episode " + nextId,
-				"the description for episode " + nextId, new Date(), graphic, producedGraphic, producedAudio, true,
+				"the description for episode " + nextId, new Date(), graphic, producedGraphic, producedAudio, complete,
 				new Date(), new Date());
 	}
 
