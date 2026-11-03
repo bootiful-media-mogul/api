@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -80,6 +81,8 @@ class BlogPostFeedController {
 		return rootedUrl(root.get(), computedPath(post));
 	}
 
+	// the feed is public, and sites like bootifulpodcast.fm read it from the browser
+	@CrossOrigin
 	@GetMapping(value = BLOG_FEED_URL)
 	String feed(@PathVariable long mogulId, @PathVariable long blogId)
 			throws IOException, ParserConfigurationException, TransformerException {

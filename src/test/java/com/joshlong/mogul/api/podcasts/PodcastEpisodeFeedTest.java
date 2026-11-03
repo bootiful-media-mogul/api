@@ -12,8 +12,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.w3c.dom.Element;
 import org.xml.sax.InputSource;
 
@@ -33,6 +35,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class PodcastEpisodeFeedTest {
 
@@ -100,6 +105,25 @@ class PodcastEpisodeFeedTest {
 		var links = links(feed);
 		assertThat(links).containsExactly("https://bootifulpodcast.podbean.com/e/shared-everywhere/",
 				"https://studio.mogul.tools/blogs/1/posts/2");
+	}
+
+	@Test
+	void browsersOnOtherSitesCanReadTheFeed() throws Exception {
+		var mogul = new Mogul(1L, "jlong", "josh@joshlong.com", "clientId", "Josh", "Long", new Date(), "UTC");
+		when(this.mogulService.getMogulById(1L)).thenReturn(mogul);
+		when(this.podcastService.getPodcastById(1L)).thenReturn(new Podcast(1L, 1L, "the title", new Date()));
+		when(this.podcastService.getPodcastEpisodesByPodcast(1L, true)).thenReturn(List.of());
+		when(this.publicationService.getPublicationsByPublicationKeysAndClass(Mockito.anyCollection(),
+				Mockito.eq(Episode.class)))
+			.thenReturn(Map.of());
+		var controller = new PodcastEpisodeFeedController(this.podcastService, this.publicationService,
+				this.mogulService, new Feeds("mogul-feeds", "http://api.mogul.tools"), this.managedFileService);
+		MockMvcBuilders.standaloneSetup(controller)
+			.build()
+			.perform(get("/public/feeds/moguls/1/podcasts/1/episodes.atom").header(HttpHeaders.ORIGIN,
+					"https://bootifulpodcast.fm"))
+			.andExpect(status().isOk())
+			.andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*"));
 	}
 
 	private Publication publication(String plugin, int minutesAgo, Publication.State state, String... urls)

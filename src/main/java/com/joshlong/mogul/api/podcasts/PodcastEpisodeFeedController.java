@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.ResponseBody;
@@ -72,6 +73,8 @@ class PodcastEpisodeFeedController {
 		return new UUID(0, id); // Uses 0 for most significant bits
 	}
 
+	// the feed is public, and sites like bootifulpodcast.fm read it from the browser
+	@CrossOrigin
 	@GetMapping(PODCAST_FEED_URL)
 	String feed(HttpServletRequest request, @PathVariable long mogulId, @PathVariable long podcastId)
 			throws TransformerException, IOException, ParserConfigurationException {
