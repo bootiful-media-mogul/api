@@ -1,8 +1,11 @@
 package com.joshlong.mogul.api.publications;
 
 import com.joshlong.mogul.api.PublishableResolver;
+import com.joshlong.mogul.api.PublisherPlugin;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.settings.Settings;
+import org.jobrunr.scheduling.JobRequestScheduler;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,10 +23,18 @@ class DefaultPublicationServiceConfiguration {
 	@Bean
 	DefaultPublicationService defaultPublicationService(JdbcClient client, MogulService mogulService,
 			ApplicationEventPublisher applicationEventPublisher, TransactionTemplate transactionTemplate,
-			TextEncryptor textEncryptor, Settings settings, Map<String, PublishableResolver<?>> resolverMap) {
+			TextEncryptor textEncryptor, Settings settings, Map<String, PublishableResolver<?>> resolverMap,
+			ObjectProvider<JobRequestScheduler> jobs) {
 		var lookup = new SettingsLookupClient(settings);
 		return new DefaultPublicationService(client, mogulService, textEncryptor, transactionTemplate, lookup,
-				resolverMap, applicationEventPublisher);
+				resolverMap, applicationEventPublisher, jobs);
+	}
+
+	@Bean
+	PublishRequestHandler publishRequestHandler(ObjectProvider<DefaultPublicationService> publications,
+			ObjectProvider<PublisherPlugin<?>> plugins, ObjectProvider<PublicationGate> gates,
+			ObjectProvider<JobRequestScheduler> jobs) {
+		return new PublishRequestHandler(publications, plugins, gates, jobs);
 	}
 
 	/**

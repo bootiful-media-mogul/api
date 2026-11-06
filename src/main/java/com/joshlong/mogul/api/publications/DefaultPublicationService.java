@@ -6,17 +6,26 @@ import com.joshlong.mogul.api.notifications.NotificationEvent;
 import com.joshlong.mogul.api.notifications.NotificationEvents;
 import com.joshlong.mogul.utils.JdbcUtils;
 import com.joshlong.mogul.utils.JsonUtils;
+import org.jobrunr.scheduling.JobRequestScheduler;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.SqlArrayValue;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
@@ -24,9 +33,14 @@ import java.util.stream.Collectors;
 
 @SuppressWarnings("unchecked")
 @RegisterReflectionForBinding({ Publishable.class, PublisherPlugin.class, PublisherPlugin.PublishContext.class,
-		PublisherPlugin.UnpublishContext.class, PublisherPlugin.Context.class })
+		PublisherPlugin.UnpublishContext.class, PublisherPlugin.Context.class, PublishRequest.class })
 class DefaultPublicationService extends AbstractDomainService<Publishable, PublishableResolver<?>>
 		implements PublicationService {
+
+	// @formatter:off
+	private static final ParameterizedTypeReference<Map<String, String>> AUTHENTICATION_DETAILS_TYPE =
+			new ParameterizedTypeReference<>() {};
+	// @formatter:on
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -42,12 +56,18 @@ class DefaultPublicationService extends AbstractDomainService<Publishable, Publi
 
 	private final ApplicationEventPublisher publisher;
 
+	/**
+	 * looked up when it's first needed: jobrunr's storage needs every handler before the
+	 * scheduler can exist, and {@link PublishRequestHandler} needs this.
+	 */
+	private final ObjectProvider<JobRequestScheduler> jobs;
+
 	DefaultPublicationService(JdbcClient db, MogulService mogulService, TextEncryptor textEncryptor,
 			TransactionTemplate tt, Function<SettingsLookup, Map<String, String>> settingsLookup,
-			Map<String, PublishableResolver<?>> resolvers, ApplicationEventPublisher publisher
-
-	) {
+			Map<String, PublishableResolver<?>> resolvers, ApplicationEventPublisher publisher,
+			ObjectProvider<JobRequestScheduler> jobs) {
 		super(resolvers.values());
+		this.jobs = jobs;
 		this.db = db;
 		this.transactionTemplate = tt;
 		this.settingsLookup = settingsLookup;
@@ -104,39 +124,121 @@ class DefaultPublicationService extends AbstractDomainService<Publishable, Publi
 
 	@Override
 	public <T extends Publishable> Publication publish(Long mogulId, T payload, Map<String, String> contextAndSettings,
-			PublisherPlugin<T> plugin) {
-		return this.completePublication(this.startPublication(mogulId, payload, contextAndSettings, plugin));
-	}
-
-	@Override
-	public <T extends Publishable> PublicationAttempt<T> startPublication(Long mogulId, T payload,
-			Map<String, String> contextAndSettings, PublisherPlugin<T> plugin) {
+			PublisherPlugin<T> plugin, @Nullable Instant when) {
 		Assert.notNull(plugin, "the plugin must not be null");
 		Assert.notNull(payload, "the payload must not be null");
+		this.mogulService.assertAuthorizedMogul(mogulId);
 		var configuration = this.settingsLookup.apply(new SettingsLookup(mogulId, plugin.name()));
-		var context = new ConcurrentHashMap<String, String>();
+		var context = new HashMap<String, String>();
 		context.putAll(configuration);
 		context.putAll(contextAndSettings);
 		context.put(MOGUL_ID, Long.toString(mogulId));
-
-		var publicationId = (long) Objects.requireNonNull(this.transactionTemplate.execute(transactionStatus -> {
-			var mogul = this.mogulService.getMogulById(mogulId);
-			Assert.notNull(mogul, "the mogul should not be null");
+		var details = this.currentAuthenticationDetails();
+		if (!details.isEmpty())
+			context.put(AUTHENTICATION_DETAILS, JsonUtils.write(details));
+		var publicationId = (long) Objects.requireNonNull(this.transactionTemplate.execute(_ -> {
 			var contextJson = this.textEncryptor.encrypt(JsonUtils.write(context));
 			var publicationData = JsonUtils.write(payload.publishableId());
 			var entityClazz = payload.getClass().getName();
 			var kh = new GeneratedKeyHolder();
-			this.db.sql(
-					"insert into publication( state, mogul_id, plugin, created, published, context, payload , payload_class ) VALUES (?,?,?,?,?,?,?,?)")
-				.params(Publication.State.DRAFT.name(), mogulId, plugin.name(), new Date(), null, contextJson,
-						publicationData, entityClazz)
+			this.db
+				.sql("""
+						insert into publication( state, mogul_id, plugin, created, published, context, payload, payload_class, scheduled )
+						values (?,?,?,?,?,?,?,?,?)
+						""")
+				.params(Publication.State.PENDING.name(), mogulId, plugin.name(), new Date(), null, contextJson,
+						publicationData, entityClazz, when == null ? null : Timestamp.from(when))
 				.update(kh);
 			return JdbcUtils.getIdFromKeyHolder(kh).longValue();
 		}));
-		context.put(PUBLICATION_ID, Long.toString(publicationId));
+		// before the job exists, so a job quick enough to finish first can't have its
+		// completion overtaken by the news that it started
 		this.doNotify(mogulId, publicationId, new PublicationStartedEvent(this.getPublicationById(publicationId)));
-		return new PublicationAttempt<>(publicationId, mogulId, plugin,
+		// only once the row is committed: a job that runs before then finds nothing to do
+		var request = new PublishRequest(publicationId, mogulId, false);
+		try {
+			var jobs = this.jobs.getObject();
+			var jobId = (when == null || !when.isAfter(Instant.now())) ? jobs.enqueue(request)
+					: jobs.schedule(when, request);
+			this.log.debug("publication {} for mogul #{} is jobrunr job {}, to run at {}", publicationId, mogulId,
+					jobId, when == null ? "once a worker is free" : when);
+		} //
+		catch (RuntimeException e) {
+			// a publication that never reaches jobrunr would stay pending forever
+			this.log.warn("couldn't hand publication {} to jobrunr", publicationId, e);
+			this.fail(this.getPublicationById(publicationId), plugin.name(),
+					"couldn't schedule the publication: " + e.getMessage());
+		}
+		return this.getPublicationById(publicationId);
+	}
+
+	/**
+	 * rebuilds what's needed to run a pending publication from its row: the payload as it
+	 * is <em>now</em>, and the context it was asked for with, under the plugin's current
+	 * settings -- a scheduled publication may run long after a token in it was rotated.
+	 * like the settings page, a setting wins over a client-supplied value of the same
+	 * name. call this as the mogul; see {@link #runAs}.
+	 */
+	<T extends Publishable> PublicationAttempt<T> attemptFor(Publication publication, PublisherPlugin<T> plugin) {
+		var mogulId = publication.mogulId();
+		var payload = this.<T>resolvePublishable(mogulId, Long.parseLong(publication.payload()),
+				(Class<T>) publication.payloadClass());
+		Assert.notNull(payload, "the " + publication.payloadClass().getSimpleName() + " #" + publication.payload()
+				+ " for publication " + publication.id() + " no longer exists");
+		var context = new ConcurrentHashMap<String, String>(publication.context());
+		context.putAll(this.settingsLookup.apply(new SettingsLookup(mogulId, plugin.name())));
+		context.put(MOGUL_ID, Long.toString(mogulId));
+		context.put(PUBLICATION_ID, Long.toString(publication.id()));
+		return new PublicationAttempt<>(publication.id(), mogulId, plugin,
 				PublisherPlugin.PublishContext.of(mogulId, payload, context));
+	}
+
+	/**
+	 * runs {@code work} authenticated as the publication's mogul, the way the request
+	 * that asked for it was: plugins look up the current mogul, and some of them a token
+	 * the gateway added to the authentication's details. jobrunr's threads are pooled, so
+	 * whatever was there before is put back afterwards.
+	 */
+	void runAs(Publication publication, Runnable work) {
+		var mogul = this.mogulService.getMogulById(publication.mogulId());
+		Assert.notNull(mogul, "there is no mogul #" + publication.mogulId());
+		var authentication = UsernamePasswordAuthenticationToken.authenticated(mogul.username(), null, List.of());
+		var details = publication.context().get(AUTHENTICATION_DETAILS);
+		if (StringUtils.hasText(details))
+			authentication.setDetails(new HashMap<>(JsonUtils.read(details, AUTHENTICATION_DETAILS_TYPE)));
+		var strategy = SecurityContextHolder.getContextHolderStrategy();
+		var previous = strategy.getContext();
+		var context = strategy.createEmptyContext();
+		context.setAuthentication(authentication);
+		strategy.setContext(context);
+		try {
+			work.run();
+		} //
+		finally {
+			strategy.setContext(previous);
+		}
+	}
+
+	private Map<String, String> currentAuthenticationDetails() {
+		var details = new HashMap<String, String>();
+		var authentication = SecurityContextHolder.getContextHolderStrategy().getContext().getAuthentication();
+		if (authentication != null && authentication.getDetails() instanceof Map<?, ?> map)
+			map.forEach((k, v) -> {
+				if (v instanceof String value)
+					details.put(String.valueOf(k), value);
+			});
+		return details;
+	}
+
+	/**
+	 * finishes a publication that never got as far as an attempt -- its payload is gone,
+	 * say, or its plugin -- so the client stops waiting on it.
+	 */
+	Publication fail(Publication publication, String outcomeKey, String error) {
+		this.log.warn("abandoning publication {}: {}", publication.id(), error);
+		var pc = PublisherPlugin.PublishContext.of(publication.mogulId(), null, new HashMap<>(publication.context()));
+		pc.failure(outcomeKey, error);
+		return this.record(publication.id(), publication.mogulId(), pc);
 	}
 
 	@Override
@@ -164,12 +266,13 @@ class DefaultPublicationService extends AbstractDomainService<Publishable, Publi
 
 	/**
 	 * writes down how it went. the publication is marked finished either way -- an
-	 * attempt that stays {@code DRAFT} is one the client never stops waiting on.
+	 * attempt that stays {@code PENDING} is one the client never stops waiting on.
 	 */
 	private <T extends Publishable> Publication record(PublicationAttempt<T> attempt) {
-		var publicationId = attempt.publicationId();
-		var mogulId = attempt.mogulId();
-		var pc = attempt.publishContext();
+		return this.record(attempt.publicationId(), attempt.mogulId(), attempt.publishContext());
+	}
+
+	private Publication record(Long publicationId, Long mogulId, PublisherPlugin.PublishContext<?> pc) {
 		var context = pc.context();
 
 		return this.transactionTemplate.execute(_ -> {

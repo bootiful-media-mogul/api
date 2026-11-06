@@ -43,6 +43,9 @@ type Publication {
     url: String
     created: DateTime
     published: DateTime
+    # when it's due to be published, if the user picked a time. null means as soon as possible.
+    scheduled: DateTime
+    # pending, published, unpublished (or draft, for the oldest rows)
     state : String
     outcomes: [PublicationOutcome]
 }
@@ -319,7 +322,10 @@ type Mutation {
 
     # publicationService
     unpublish( publicationId: Int ) : Boolean
-    publish( publishableId: Int, publishableType: String, contextJson: String, plugin: String ) : Int
+    # every publication runs on jobrunr, now or at 'scheduled' if it's given. this returns the
+    # (pending) publication's id before anything has been published; the outcome arrives as
+    # notifications.
+    publish( publishableId: Int, publishableType: String, contextJson: String, plugin: String, scheduled: DateTime ) : Int
 
     # compositions
     createCompositionAttachment( compositionId: Int ) : Attachment

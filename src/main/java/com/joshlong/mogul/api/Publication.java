@@ -6,11 +6,26 @@ import java.util.List;
 import java.util.Map;
 
 public record Publication(Long mogulId, Long id, String plugin, Date created, Date published,
-		Map<String, String> context, String payload, Class<?> payloadClass, State state, List<Outcome> outcomes) {
+		Map<String, String> context, String payload, Class<?> payloadClass, State state, List<Outcome> outcomes,
+		Date scheduled) {
 
 	public enum State {
 
-		PUBLISHED, DRAFT, UNPUBLISHED
+		/**
+		 * handed to jobrunr, which will run it now or at {@link #scheduled()}; nothing
+		 * has been published yet.
+		 */
+		PENDING,
+
+		PUBLISHED,
+
+		/**
+		 * what in-flight publications were called before they all went through jobrunr.
+		 * nothing new is written in this state, but old rows still are.
+		 */
+		DRAFT,
+
+		UNPUBLISHED
 
 	}
 

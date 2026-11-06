@@ -68,7 +68,8 @@ class PublicationRowMapper implements RowMapper<Publication> {
 				context, //
 				payload, //
 				ReflectionUtils.classForName(rs.getString("payload_class")), //
-				stateEnum, this.publicationToOutcomes.computeIfAbsent(publicationId, _ -> new ArrayList<>()));
+				stateEnum, this.publicationToOutcomes.computeIfAbsent(publicationId, _ -> new ArrayList<>()), //
+				rs.getTimestamp("scheduled"));
 
 		if (last) {
 			this.materializeOutcomes();

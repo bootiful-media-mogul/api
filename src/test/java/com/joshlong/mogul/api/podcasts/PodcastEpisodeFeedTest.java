@@ -133,7 +133,7 @@ class PodcastEpisodeFeedTest {
 		for (var url : urls)
 			outcomes.add(new Publication.Outcome(0, when, true, URI.create(url).toURL(), plugin, null, null));
 		return new Publication(1L, this.counter.incrementAndGet(), plugin, when, when, Map.of(), "", Episode.class,
-				state, outcomes);
+				state, outcomes, null);
 	}
 
 	// the entry links that aren't the thumbnail enclosure, in order

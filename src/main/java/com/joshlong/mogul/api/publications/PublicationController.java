@@ -11,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.graphql.data.method.annotation.*;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -19,11 +18,8 @@ import org.springframework.util.StringUtils;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
 @Controller
 class PublicationController<T extends Publishable> {
@@ -32,22 +28,17 @@ class PublicationController<T extends Publishable> {
 
 	private final Settings settings;
 
-	private final Executor executor = Executors.newVirtualThreadPerTaskExecutor();
-
 	private final PublicationService publicationService;
 
 	private final MogulService mogulService;
 
 	private final Map<String, PublisherPlugin<T>> plugins = new ConcurrentHashMap<>();
 
-	private final List<PublicationGate> gates;
-
 	PublicationController(Settings settings, PublicationService publicationService, MogulService mogulService,
-			Map<String, PublisherPlugin<?>> plugins, List<PublicationGate> gates) {
+			Map<String, PublisherPlugin<?>> plugins) {
 		this.publicationService = publicationService;
 		this.mogulService = mogulService;
 		this.settings = settings;
-		this.gates = gates;
 		plugins.forEach((k, v) -> this.plugins.put(k, (PublisherPlugin<T>) v));
 	}
 
@@ -74,39 +65,31 @@ class PublicationController<T extends Publishable> {
 		return resolvedPlugin.canPublish(pc);
 	}
 
+	/**
+	 * asks for a publication, now or at {@code scheduled}, and returns its id straight
+	 * away. nothing has been published by then -- the publication is pending, and the
+	 * client hears how it went from the notifications that follow, the same way whether
+	 * it was for right now or for next week.
+	 */
 	@MutationMapping
 	Long publish(@Argument Long publishableId, @Argument String publishableType, @Argument String contextJson,
-			@Argument String plugin,
+			@Argument String plugin, @Argument OffsetDateTime scheduled,
 			@ContextValue(name = PublicationService.BASE_URL, required = false) String baseUrl) {
 		this.log.debug(
-				"going to publish the publication with id # {} and type # {} and context JSON :: {} :: and plugin named {}",
-				publishableId, publishableType, contextJson, plugin);
+				"going to publish the publication with id # {} and type # {} and context JSON :: {} :: and plugin named {} at {}",
+				publishableId, publishableType, contextJson, plugin, scheduled);
 		Assert.hasText(plugin, "the plugin named [" + plugin + "] does not exist!");
 		var currentMogulId = this.mogulService.getCurrentMogul().id();
-		var publishable = (T) publicationService.resolvePublishable(currentMogulId, publishableId, publishableType);
+		var publishable = (T) this.publicationService.resolvePublishable(currentMogulId, publishableId,
+				publishableType);
 		Assert.state(this.plugins.containsKey(plugin), "the plugin named [" + plugin + "] does not exist!");
 		var publisherPlugin = this.plugins.get(plugin);
-		var auth = SecurityContextHolder.getContextHolderStrategy().getContext().getAuthentication();
 		var contextAndSettings = this.contextFromClient(contextJson);
 		if (StringUtils.hasText(baseUrl))
 			contextAndSettings.put(PublicationService.BASE_URL, baseUrl);
-		var attempt = this.publicationService.startPublication(currentMogulId, publishable, contextAndSettings,
-				publisherPlugin);
-		// the authentication is captured here, on the request thread, because everything
-		// past this point happens on some other one -- and, if a gate takes the attempt,
-		// possibly minutes later on a thread that had nothing to do with this request.
-		var run = (Runnable) () -> this.executor.execute(() -> {
-			SecurityContextHolder.getContext().setAuthentication(auth);
-			this.mogulService.assertAuthorizedMogul(currentMogulId);
-			this.publicationService.completePublication(attempt);
-		});
-		for (var gate : this.gates)
-			if (gate.defer(attempt, run)) {
-				this.log.debug("publication {} was deferred by {}", attempt.publicationId(), gate.getClass().getName());
-				return attempt.publicationId();
-			}
-		run.run();
-		return attempt.publicationId();
+		var publication = this.publicationService.publish(currentMogulId, publishable, contextAndSettings,
+				publisherPlugin, scheduled == null ? null : scheduled.toInstant());
+		return publication.id();
 	}
 
 	@QueryMapping
@@ -128,6 +111,11 @@ class PublicationController<T extends Publishable> {
 	@SchemaMapping
 	OffsetDateTime published(Publication publication) {
 		return DateUtils.forDate(publication.published());
+	}
+
+	@SchemaMapping
+	OffsetDateTime scheduled(Publication publication) {
+		return DateUtils.forDate(publication.scheduled());
 	}
 
 	@SchemaMapping
