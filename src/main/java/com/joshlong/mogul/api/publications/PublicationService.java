@@ -4,6 +4,9 @@ import com.joshlong.mogul.api.Publication;
 import com.joshlong.mogul.api.Publishable;
 import com.joshlong.mogul.api.PublisherPlugin;
 
+import org.jspecify.annotations.Nullable;
+
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Map;
 
@@ -30,6 +33,14 @@ public interface PublicationService {
 	 */
 	String BASE_URL_HEADER = "X-Mogul-Base-Url";
 
+	/**
+	 * the string-valued details of the authentication that asked for the publication
+	 * (tokens the gateway propagated, like WordPress'), as json. the plugin runs later,
+	 * on a jobrunr thread, with no request in sight; this is how it gets them back. the
+	 * publication's context is encrypted at rest, like the settings already in it.
+	 */
+	String AUTHENTICATION_DETAILS = "authenticationDetails";
+
 	<T extends Publishable> T resolvePublishable(Long mogulId, Long id, String clazz);
 
 	<T extends Publishable> T resolvePublishable(Long mogulId, Long id, Class<T> clazz);
@@ -45,12 +56,23 @@ public interface PublicationService {
 	Map<Long, Collection<Publication>> getPublicationsByPublicationKeysAndClass(Collection<Long> publicationKeys,
 			Class<?> clazz);
 
+	/**
+	 * records a {@link Publication.State#PENDING pending} publication and hands it to
+	 * jobrunr, which runs the plugin at {@code when} -- or as soon as it can, if
+	 * {@code when} is {@code null} or already past. all roads lead to jobrunr: this
+	 * returns before anything has been published, and the client learns how it went the
+	 * same way whether it was for right now or for next week, from the notifications that
+	 * follow.
+	 * @param when the moment to publish, or {@code null} for as soon as possible
+	 */
 	<T extends Publishable> Publication publish(Long mogulId, T payload, Map<String, String> contextAndSettings,
-			PublisherPlugin<T> plugin);
+			PublisherPlugin<T> plugin, @Nullable Instant when);
 
-	<T extends Publishable> PublicationAttempt<T> startPublication(Long mogulId, T payload,
-			Map<String, String> contextAndSettings, PublisherPlugin<T> plugin);
-
+	/**
+	 * runs the attempt's plugin and records how it went. jobrunr calls this, by way of
+	 * {@link PublishRequestHandler}, once the publication's time has come and every
+	 * {@link PublicationGate} has let it through.
+	 */
 	<T extends Publishable> Publication completePublication(PublicationAttempt<T> attempt);
 
 	/**
