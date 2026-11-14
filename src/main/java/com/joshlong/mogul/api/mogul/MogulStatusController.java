@@ -5,6 +5,7 @@ import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.graphql.data.method.annotation.SchemaMapping;
 import org.springframework.stereotype.Controller;
 
+import java.time.LocalDate;
 import java.util.Collection;
 
 @Controller
@@ -24,6 +25,11 @@ class MogulStatusController {
 	@QueryMapping
 	MogulStatus mogulStatusToday() {
 		return this.mogulStatusService.today(this.mogulService.getCurrentMogul().id());
+	}
+
+	@QueryMapping
+	MogulStatus mogulStatusForDate(@Argument String date) {
+		return this.mogulStatusService.forDate(this.mogulService.getCurrentMogul().id(), LocalDate.parse(date));
 	}
 
 	@QueryMapping

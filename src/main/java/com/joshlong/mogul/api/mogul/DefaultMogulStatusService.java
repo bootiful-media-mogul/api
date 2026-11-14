@@ -2,6 +2,7 @@ package com.joshlong.mogul.api.mogul;
 
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.jdbc.support.SqlArrayValue;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
@@ -30,13 +31,17 @@ class DefaultMogulStatusService implements MogulStatusService {
 
 	@Override
 	public MogulStatus today(Long mogulId) {
-		var today = LocalDate.now(this.zoneFor(mogulId));
+		return this.forDate(mogulId, LocalDate.now(this.zoneFor(mogulId)));
+	}
+
+	@Override
+	public MogulStatus forDate(Long mogulId, LocalDate date) {
 		this.db//
 			.sql("insert into mogul_status(mogul_id, date) values (?,?) on conflict (mogul_id, date) do nothing")//
-			.params(mogulId, today)//
+			.params(mogulId, date)//
 			.update();
-		var status = this.getMogulStatusByDate(mogulId, today);
-		Assert.notNull(status, "the status for mogul [" + mogulId + "] on [" + today + "] should exist by now");
+		var status = this.getMogulStatusByDate(mogulId, date);
+		Assert.notNull(status, "the status for mogul [" + mogulId + "] on [" + date + "] should exist by now");
 		return status;
 	}
 
@@ -61,6 +66,17 @@ class DefaultMogulStatusService implements MogulStatusService {
 			.query(this.mogulStatusRowMapper) //
 			.list();
 		return all.isEmpty() ? null : all.getFirst();
+	}
+
+	@Override
+	public Collection<MogulStatus> getMogulStatusesByIds(Collection<Long> ids) {
+		if (ids.isEmpty())
+			return List.of();
+		return this.db //
+			.sql("select * from mogul_status where id = any(?)") //
+			.params(new SqlArrayValue("bigint", ids.toArray())) //
+			.query(this.mogulStatusRowMapper) //
+			.list();
 	}
 
 	@Override

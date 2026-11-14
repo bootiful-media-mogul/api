@@ -4,6 +4,10 @@ import com.joshlong.mogul.api.AbstractPublishableResolver;
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * resolves {@link com.joshlong.mogul.api.Publishable} instances of {@link MogulStatus},
  * so that a mogul's day -- and not the mogul -- can be the subject of a publication.
@@ -27,6 +31,22 @@ class MogulStatusPublishableResolver extends AbstractPublishableResolver<MogulSt
 		Assert.notNull(status, "there is no mogul status with id [" + id + "]");
 		this.mogulService.assertAuthorizedMogul(status.mogulId());
 		return status;
+	}
+
+	@Override
+	public Map<Long, MogulStatus> findAll(Collection<Long> keys) {
+		var map = new HashMap<Long, MogulStatus>();
+		for (var status : this.mogulStatusService.getMogulStatusesByIds(keys)) {
+			this.mogulService.assertAuthorizedMogul(status.mogulId());
+			map.put(status.id(), status);
+		}
+		return map;
+	}
+
+	// a day has no title of its own; the client says what kind of thing it is
+	@Override
+	public String title(MogulStatus publishable) {
+		return publishable.date().toString();
 	}
 
 }

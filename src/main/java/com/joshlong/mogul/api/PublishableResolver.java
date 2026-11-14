@@ -1,5 +1,9 @@
 package com.joshlong.mogul.api;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Repository interface for entities that can be published.
  * <p>
@@ -15,5 +19,26 @@ package com.joshlong.mogul.api;
  * @param <T> The concrete entity type that implements Publishable
  */
 public interface PublishableResolver<T extends Publishable> extends DomainResolver<Publishable, T> {
+
+	/**
+	 * many at once, keyed by id, for the screens that show publications of every kind
+	 * together. the default asks one at a time; resolvers that can should do it in one
+	 * query. ids that don't resolve are left out.
+	 */
+	default Map<Long, T> findAll(Collection<Long> keys) {
+		var map = new HashMap<Long, T>();
+		for (var key : keys) {
+			var found = this.find(key);
+			if (found != null)
+				map.put(key, found);
+		}
+		return map;
+	}
+
+	/**
+	 * what to call the publishable where it's listed alongside other kinds of
+	 * publishable, like the home page's calendar.
+	 */
+	String title(T publishable);
 
 }

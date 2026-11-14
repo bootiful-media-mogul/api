@@ -48,6 +48,16 @@ type Publication {
     # pending, published, unpublished (or draft, for the oldest rows)
     state : String
     outcomes: [PublicationOutcome]
+    # what it's about. batch-loaded, a kind of publishable at a time
+    publishable: PublishableReference
+}
+
+# a publishable, named well enough to list beside publishables of other kinds.
+# title is null if the publishable has since been deleted
+type PublishableReference {
+    type: String
+    id: Int
+    title: String
 }
 
 type PublicationOutcome  {
@@ -393,6 +403,8 @@ type Query {
 
     # publicationService
     publicationsForPublishable( type : String, id: Int ) : [Publication]
+    # every publication of the mogul's, of every publishable, that went out (or is due to) in [from, to)
+    publicationsBetween( from: DateTime, to: DateTime ) : [Publication]
     canPublish (publishableId: Int , publishableType: String , contextJson: String , plugin: String) : Boolean
 
     # compositions
@@ -413,6 +425,8 @@ type Query {
     # mogul
     me: Mogul
     mogulStatusToday: MogulStatus
+    # the status for a day (yyyy-mm-dd), created if there isn't one yet
+    mogulStatusForDate(date: String): MogulStatus
     mogulStatuses(limit: Int): [MogulStatus]
 
     # ai

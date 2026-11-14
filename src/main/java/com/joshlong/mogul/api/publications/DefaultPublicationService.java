@@ -368,6 +368,54 @@ class DefaultPublicationService extends AbstractDomainService<Publishable, Publi
 		return results;
 	}
 
+	@Override
+	public Collection<Publication> getPublicationsBetween(Long mogulId, Instant from, Instant to) {
+		this.mogulService.assertAuthorizedMogul(mogulId);
+		return this.db //
+			.sql("""
+					select * from publication
+					where mogul_id = ?
+					  and coalesce(published, scheduled, created) >= ?
+					  and coalesce(published, scheduled, created) < ?
+					order by coalesce(published, scheduled, created)
+					""") //
+			.params(mogulId, Timestamp.from(from), Timestamp.from(to)) //
+			.query(this.getPublicationRowMapper()) //
+			.list();
+	}
+
+	@Override
+	public Map<Long, PublishableReference> getPublishableReferences(Collection<Publication> publications) {
+		var references = new HashMap<Long, PublishableReference>();
+		var byClass = publications.stream()
+			.filter(p -> p.payloadClass() != null && Publishable.class.isAssignableFrom(p.payloadClass()))
+			.collect(Collectors.groupingBy(p -> (Class<? extends Publishable>) p.payloadClass()));
+		byClass.forEach((clazz, list) -> {
+			var type = this.typeForClass(clazz);
+			var ids = list.stream().map(p -> Long.parseLong(p.payload())).collect(Collectors.toSet());
+			// a publishable that has since been deleted, or whose kind no longer has a
+			// resolver, still says what kind of thing it was
+			var titles = new HashMap<Long, String>();
+			try {
+				titles.putAll(this.titles(this.findResolver(clazz), ids));
+			} //
+			catch (RuntimeException e) {
+				this.log.debug("couldn't resolve the {} publishables {}", type, ids, e);
+			}
+			for (var p : list) {
+				var id = Long.parseLong(p.payload());
+				references.put(p.id(), new PublishableReference(type, id, titles.get(id)));
+			}
+		});
+		return references;
+	}
+
+	private <T extends Publishable> Map<Long, String> titles(PublishableResolver<T> resolver, Set<Long> ids) {
+		var titles = new HashMap<Long, String>();
+		resolver.findAll(ids).forEach((id, publishable) -> titles.put(id, resolver.title(publishable)));
+		return titles;
+	}
+
 	public record SettingsLookup(Long mogulId, String category) {
 
 	}

@@ -9,6 +9,7 @@ import com.joshlong.mogul.utils.DateUtils;
 import com.joshlong.mogul.utils.JsonUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.graphql.data.method.annotation.*;
 import org.springframework.stereotype.Controller;
@@ -18,10 +19,13 @@ import org.springframework.util.StringUtils;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Controller
+@RegisterReflectionForBinding(PublishableReference.class)
 class PublicationController<T extends Publishable> {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
@@ -95,6 +99,30 @@ class PublicationController<T extends Publishable> {
 	@QueryMapping
 	Collection<Publication> publicationsForPublishable(@Argument String type, @Argument Long id) {
 		return this.publicationService.getPublicationsByPublicationKeyAndClass(id, type);
+	}
+
+	/**
+	 * every publication the mogul has, whatever it's about, that went out or is due to go
+	 * out in {@code [from, to)}: the home page's calendar.
+	 */
+	@QueryMapping
+	Collection<Publication> publicationsBetween(@Argument OffsetDateTime from, @Argument OffsetDateTime to) {
+		Assert.notNull(from, "from must not be null");
+		Assert.notNull(to, "to must not be null");
+		var mogulId = this.mogulService.getCurrentMogul().id();
+		return this.publicationService.getPublicationsBetween(mogulId, from.toInstant(), to.toInstant());
+	}
+
+	@BatchMapping
+	Map<Publication, PublishableReference> publishable(List<Publication> publications) {
+		var references = this.publicationService.getPublishableReferences(publications);
+		var map = new LinkedHashMap<Publication, PublishableReference>();
+		for (var publication : publications) {
+			var reference = references.get(publication.id());
+			if (reference != null)
+				map.put(publication, reference);
+		}
+		return map;
 	}
 
 	@SchemaMapping

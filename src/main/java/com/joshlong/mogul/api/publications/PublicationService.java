@@ -57,6 +57,19 @@ public interface PublicationService {
 			Class<?> clazz);
 
 	/**
+	 * every one of the mogul's publications, whatever it's about, that went out (or is
+	 * due to go out) in {@code [from, to)}. a publication's moment is when it was
+	 * published, else when it's scheduled for, else when it was asked for.
+	 */
+	Collection<Publication> getPublicationsBetween(Long mogulId, Instant from, Instant to);
+
+	/**
+	 * what each publication is about, keyed by publication id, resolved a kind of
+	 * publishable at a time rather than a publication at a time.
+	 */
+	Map<Long, PublishableReference> getPublishableReferences(Collection<Publication> publications);
+
+	/**
 	 * records a {@link Publication.State#PENDING pending} publication and hands it to
 	 * jobrunr, which runs the plugin at {@code when} -- or as soon as it can, if
 	 * {@code when} is {@code null} or already past. all roads lead to jobrunr: this
