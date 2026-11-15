@@ -292,14 +292,6 @@
             <plugin>
                 <groupId>org.graalvm.buildtools</groupId>
                 <artifactId>native-maven-plugin</artifactId>
-                <configuration>
-                    <buildArgs>
-                        <!-- OpenAiSdkHints registers a filtered copy of this file instead -->
-                        <buildArg>--exclude-config</buildArg>
-                        <buildArg>.*/openai-java-core-[^/]*\.jar</buildArg>
-                        <buildArg>META-INF/native-image/reflect-config\.json</buildArg>
-                    </buildArgs>
-                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.cyclonedx</groupId>

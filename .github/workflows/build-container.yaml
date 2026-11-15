@@ -11,6 +11,7 @@ env:
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -24,7 +25,23 @@ jobs:
           gh_token: ${{ env.GH_TOKEN }}
           gh_user: ${{ env.GH_USER }}
 
+      # a GitHub-hosted runner has 16 GB of RAM, and native-image sizes its heap from that,
+      # leaving too little for everything else; the kernel then kills the runner mid-build.
+      # cap the heap and back it with swap so a big build gets slower instead of dying.
+      - name: Add swap
+        run: |
+          sudo swapoff -a
+          sudo rm -f /mnt/swapfile /swapfile
+          sudo fallocate -l 16G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
+          df -h /
+
       - run: ./mvnw --batch-mode --no-transfer-progress -DskipTests -Pnative native:compile
+        env:
+          NATIVE_IMAGE_OPTIONS: -J-Xmx13g
 
       - uses: bootiful-media-mogul/github-actions-setup-container-build-env@main
         with:
