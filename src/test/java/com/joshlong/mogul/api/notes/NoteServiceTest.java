@@ -24,14 +24,14 @@ class NoteServiceTest {
 		var existing = noteService.notes(mogul.id(), first, true).size();
 		var existingUnfinished = noteService.notes(mogul.id(), first, false).size();
 		var noteText = "this is a test note";
-		var thisIsATestNote = noteService.create(mogul.id(), first, null, noteText);
+		var thisIsATestNote = noteService.create(mogul.id(), first, null, null, noteText);
 		Assertions.assertNotNull(thisIsATestNote, "the note is not null");
 		Assertions.assertEquals(noteText, thisIsATestNote.note());
 		Assertions.assertEquals(existing + 1, noteService.notes(mogul.id(), first).size());
-		var secondNote = noteService.create(mogul.id(), first, null, "this is another test note");
+		var secondNote = noteService.create(mogul.id(), first, null, null, "this is another test note");
 		Assertions.assertEquals(existing + 2, noteService.notes(mogul.id(), first).size());
 		var anotherOne = "another one!";
-		var updated = noteService.update(mogul.id(), secondNote.id(), null, anotherOne);
+		var updated = noteService.update(mogul.id(), secondNote.id(), null, null, anotherOne);
 		Assertions.assertEquals(anotherOne, updated.note(), "the note was updated");
 		var done = noteService.setDone(mogul.id(), updated.id(), true);
 		Assertions.assertNotNull(done.done(), "the note was marked done");

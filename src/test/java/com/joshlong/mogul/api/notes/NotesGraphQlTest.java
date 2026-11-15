@@ -95,6 +95,75 @@ class NotesGraphQlTest {
 	}
 
 	@Test
+	void findMyNoteForAUrl() {
+		var url = "https://example.com/" + java.util.UUID.randomUUID();
+		Assertions.assertTrue(this.notesForUrl(this.owner, url).isEmpty(), "a page i haven't clipped has no note");
+
+		var first = this.createMogulNote(this.owner, "first visit", url);
+		var second = this.createMogulNote(this.owner, "second visit", url);
+		this.createMogulNote(this.owner, "somewhere else", url + "/elsewhere");
+
+		var mine = this.notesForUrl(this.owner, url);
+		Assertions.assertEquals(List.of(second, first),
+				mine.stream().map(n -> ((Number) n.get("id")).longValue()).toList(), "newest first, and only this url");
+		Assertions.assertEquals("second visit", mine.getFirst().get("note"));
+
+		Assertions.assertTrue(this.notesForUrl(this.intruder, url).isEmpty(),
+				"another mogul must not see my notes for a url");
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<Map<String, Object>> notesForUrl(HttpGraphQlTester tester, String url) {
+		return (List<Map<String, Object>>) (List<?>) tester
+			.document("query($url:String){ notesForUrl(url:$url){ id title note url created } }")
+			.variable("url", url)
+			.execute()
+			.path("notesForUrl")
+			.entityList(Map.class)
+			.get();
+	}
+
+	@Test
+	void clipATitledPageWithNoText() {
+		var before = this.noteIds();
+		this.owner.document("""
+				mutation($id:Int,$title:String,$url:String){
+				  createNote(type:"mogul", id:$id, title:$title, url:$url)
+				}
+				""")
+			.variable("id", this.ownerId)
+			.variable("title", "An Article Worth Reading")
+			.variable("url", "https://example.com/worth-reading")
+			.execute()
+			.path("createNote")
+			.entity(Boolean.class)
+			.isEqualTo(true);
+		var after = this.noteIds();
+		after.removeAll(before);
+		Assertions.assertEquals(1, after.size());
+		var noteId = after.getFirst();
+		this.createdNoteIds.add(noteId);
+
+		var note = this.mogulNote(noteId);
+		Assertions.assertEquals("An Article Worth Reading", note.get("title"));
+		Assertions.assertEquals("", note.get("note"));
+		Assertions.assertEquals("https://example.com/worth-reading", note.get("url"));
+
+		// the studio edits only the text: the clipped title and url have to survive that
+		this.owner.document("mutation($id:Int,$note:String){ updateNote(id:$id, note:$note) }")
+			.variable("id", noteId)
+			.variable("note", "my thoughts")
+			.execute()
+			.path("updateNote")
+			.entity(Boolean.class)
+			.isEqualTo(true);
+		note = this.mogulNote(noteId);
+		Assertions.assertEquals("An Article Worth Reading", note.get("title"));
+		Assertions.assertEquals("my thoughts", note.get("note"));
+		Assertions.assertEquals("https://example.com/worth-reading", note.get("url"));
+	}
+
+	@Test
 	void editingTheTextKeepsTheUrl() {
 		var noteId = this.createMogulNote(this.owner, "first draft", "https://example.com/keep-me");
 
@@ -120,6 +189,38 @@ class NotesGraphQlTest {
 
 		this.updateUrl(noteId, null);
 		Assertions.assertNull(this.mogulNote(noteId).get("url"), "an explicit null url clears it");
+	}
+
+	@Test
+	void theStudioCanEditTheTitleAndUrl() {
+		var noteId = this.createMogulNote(this.owner, "text", "https://example.com/before");
+		var update = "mutation($id:Int,$note:String,$title:String,$url:String){ updateNote(id:$id, note:$note, title:$title, url:$url) }";
+
+		this.owner.document(update)
+			.variable("id", noteId)
+			.variable("note", "text")
+			.variable("title", "A New Title")
+			.variable("url", "https://example.com/after")
+			.execute()
+			.path("updateNote")
+			.entity(Boolean.class)
+			.isEqualTo(true);
+		var note = this.mogulNote(noteId);
+		Assertions.assertEquals("A New Title", note.get("title"));
+		Assertions.assertEquals("https://example.com/after", note.get("url"));
+
+		this.owner.document(update)
+			.variable("id", noteId)
+			.variable("note", "text")
+			.variable("title", null)
+			.variable("url", null)
+			.execute()
+			.path("updateNote")
+			.entity(Boolean.class)
+			.isEqualTo(true);
+		note = this.mogulNote(noteId);
+		Assertions.assertNull(note.get("title"), "a null title clears it");
+		Assertions.assertNull(note.get("url"), "a null url clears it");
 	}
 
 	@Test
@@ -174,7 +275,8 @@ class NotesGraphQlTest {
 	@SuppressWarnings("unchecked")
 	private Map<String, Object> mogulNote(Long noteId) {
 		var notes = this.owner
-			.document("query($id:Int){ notesForNotable(type:\"mogul\", id:$id, includeDone:true){ id note url } }")
+			.document(
+					"query($id:Int){ notesForNotable(type:\"mogul\", id:$id, includeDone:true){ id title note url } }")
 			.variable("id", this.ownerId)
 			.execute()
 			.path("notesForNotable")

@@ -35,7 +35,7 @@ class DefaultNoteService extends AbstractDomainService<Notable, NotableResolver<
 		return new Note(rs.getLong("mogul_id"), rs.getLong("id"), rs.getString("payload"),
 				ReflectionUtils.classForName(rs.getString("payload_class")),
 				new java.util.Date(rs.getTimestamp("created").getTime()), UriUtils.uri(rs.getString("url")),
-				done == null ? null : new java.util.Date(done.getTime()), rs.getString("note"));
+				done == null ? null : new java.util.Date(done.getTime()), rs.getString("title"), rs.getString("note"));
 	};
 
 	private final JdbcClient db;
@@ -129,10 +129,29 @@ class DefaultNoteService extends AbstractDomainService<Notable, NotableResolver<
 	}
 
 	@Override
-	public Note update(Long mogulId, Long noteId, URI url, String note) {
+	public <T extends Notable> Collection<Note> notesForUrl(Long mogulId, T payload, URI url) {
+		if (url == null)
+			return List.of();
+		return this.db //
+			.sql("""
+					select *
+					from note
+					where mogul_id = ?
+					  and payload = ?
+					  and payload_class = ?
+					  and url = ?
+					order by created desc, id desc
+					""") //
+			.params(mogulId, JsonUtils.write(payload.notableKey()), payload.getClass().getName(), url.toString()) //
+			.query(this.noteRowMapper) //
+			.list();
+	}
+
+	@Override
+	public Note update(Long mogulId, Long noteId, URI url, String title, String note) {
 		NoteUrls.assertWebUrl(url);
-		var updated = this.db.sql("update note set url = ?, note = ? where id = ? and mogul_id = ?") //
-			.params(url == null ? null : url.toString(), note, noteId, mogulId) //
+		var updated = this.db.sql("update note set url = ?, title = ?, note = ? where id = ? and mogul_id = ?") //
+			.params(url == null ? null : url.toString(), blankToNull(title), nonNull(note), noteId, mogulId) //
 			.update();
 		if (updated == 0) {
 			return null;
@@ -143,17 +162,18 @@ class DefaultNoteService extends AbstractDomainService<Notable, NotableResolver<
 	}
 
 	@Override
-	public <T extends Notable> Note create(Long mogulId, T payload, URI url, String note) {
+	public <T extends Notable> Note create(Long mogulId, T payload, URI url, String title, String note) {
 		NoteUrls.assertWebUrl(url);
 		var payloadKeyAsJson = JsonUtils.write(payload.notableKey());
-		var newNote = new Note(mogulId, null, payloadKeyAsJson, payload.getClass(), new Date(), url, null, note);
+		var newNote = new Note(mogulId, null, payloadKeyAsJson, payload.getClass(), new Date(), url, null,
+				blankToNull(title), nonNull(note));
 		var kg = new GeneratedKeyHolder();
 		this.db.sql("""
-				 insert into note (mogul_id, created, payload, payload_class, url, note)
-				 values (?, ?, ?, ?, ?, ?)
+				 insert into note (mogul_id, created, payload, payload_class, url, title, note)
+				 values (?, ?, ?, ?, ?, ?, ?)
 				""")
 			.params(mogulId, newNote.created(), newNote.payload(), newNote.payloadClass().getName(),
-					url == null ? null : url.toString(), note)
+					url == null ? null : url.toString(), newNote.title(), newNote.note())
 			.update(kg);
 
 		var insertedId = ((Integer) Objects.requireNonNull(kg.getKeys()).get("id")).longValue();
@@ -173,6 +193,15 @@ class DefaultNoteService extends AbstractDomainService<Notable, NotableResolver<
 		var noteUpdated = this.getNoteById(noteId);
 		this.publisher.publishEvent(new NoteUpdatedEvent(noteUpdated));
 		return noteUpdated;
+	}
+
+	private static String blankToNull(String s) {
+		return s == null || s.isBlank() ? null : s.strip();
+	}
+
+	// a clip can be just a title and a url, but the column is not null
+	private static String nonNull(String s) {
+		return s == null ? "" : s;
 	}
 
 }
