@@ -34,8 +34,10 @@ class NoteSearchableResolver extends AbstractSearchableResolver<Note> {
 	private SearchableResult<Note> searchableNote(Note note) {
 		var notableId = Long.parseLong(note.payload());
 		var context = Map.of("type", (Object) TypeUtils.typeName(Note.class), "id", note.id());
-		return new SearchableResult<>(note.searchableId(), note, note.note(), note.note(), notableId, new Date(),
-				this.type, context);
+		var title = note.title() != null ? note.title() : note.note();
+		var text = note.url() == null ? note.note() : note.note() + "\n" + note.url();
+		return new SearchableResult<>(note.searchableId(), note, title, text, notableId, new Date(), this.type,
+				context);
 	}
 
 	@Override

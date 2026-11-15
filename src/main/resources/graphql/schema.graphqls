@@ -236,7 +236,9 @@ type SearchableResult {
 
 type Note {
     id: Int
+    title: String
     note: String
+    url: String
     created: DateTime
     done: DateTime
     type: String
@@ -313,9 +315,10 @@ type Mutation {
     summarize(content:String): String
 
     # notes
-    createNote(type:String, id:Int, note:String): Boolean
+    createNote(type:String, id:Int, note:String, url:String, title:String): Boolean
     deleteNote(id:Int) : Boolean
-    updateNote(id:Int, note:String): Boolean
+    # leave url or title out to keep the note's current value, or pass null to clear it
+    updateNote(id:Int, note:String, url:String, title:String): Boolean
     setNoteDone(id:Int, done:Boolean): Boolean
 
 
@@ -400,6 +403,8 @@ type Query {
 
     # notes
     notesForNotable(type:String, id:Int, includeDone:Boolean): [Note]
+    # the current mogul's own notes (clips) for exactly this url, newest first
+    notesForUrl(url:String): [Note]
 
     # publicationService
     publicationsForPublishable( type : String, id: Int ) : [Publication]

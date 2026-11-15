@@ -29,9 +29,19 @@ public interface NoteService {
 
 	<T extends Notable> Collection<Note> notes(Long mogulId, T payload, boolean includeDone);
 
-	<T extends Notable> Note create(Long mogulId, T payload, URI url, String note);
+	/**
+	 * the given mogul's notes on the given notable that point to exactly this url, newest
+	 * first. it's how the clipper finds the note it already made for a page.
+	 */
+	<T extends Notable> Collection<Note> notesForUrl(Long mogulId, T payload, URI url);
 
-	<T extends Notable> Note update(Long noteId, URI url, String note);
+	<T extends Notable> Note create(Long mogulId, T payload, URI url, String title, String note);
+
+	/**
+	 * replaces the title, text, and url of a note that belongs to the given mogul.
+	 * @return the updated note, or {@code null} if the mogul has no such note
+	 */
+	Note update(Long mogulId, Long noteId, URI url, String title, String note);
 
 	Note setDone(Long mogulId, Long noteId, boolean done);
 
