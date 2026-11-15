@@ -129,23 +129,26 @@ class DefaultNoteService extends AbstractDomainService<Notable, NotableResolver<
 	}
 
 	@Override
-	public <T extends Notable> Note update(Long noteId, URI url, String note) {
-		this.db.sql("update note set  url = ?, note = ? where id = ?") //
-			.param(url == null ? null : url.toString())
-			.param(note)
-			.param(noteId) //
+	public Note update(Long mogulId, Long noteId, URI url, String note) {
+		NoteUrls.assertWebUrl(url);
+		var updated = this.db.sql("update note set url = ?, note = ? where id = ? and mogul_id = ?") //
+			.params(url == null ? null : url.toString(), note, noteId, mogulId) //
 			.update();
+		if (updated == 0) {
+			return null;
+		}
 		var noteUpdated = this.getNoteById(noteId);
-		publisher.publishEvent(new NoteUpdatedEvent(noteUpdated));
+		this.publisher.publishEvent(new NoteUpdatedEvent(noteUpdated));
 		return noteUpdated;
 	}
 
 	@Override
 	public <T extends Notable> Note create(Long mogulId, T payload, URI url, String note) {
+		NoteUrls.assertWebUrl(url);
 		var payloadKeyAsJson = JsonUtils.write(payload.notableKey());
 		var newNote = new Note(mogulId, null, payloadKeyAsJson, payload.getClass(), new Date(), url, null, note);
 		var kg = new GeneratedKeyHolder();
-		db.sql("""
+		this.db.sql("""
 				 insert into note (mogul_id, created, payload, payload_class, url, note)
 				 values (?, ?, ?, ?, ?, ?)
 				""")

@@ -237,6 +237,7 @@ type SearchableResult {
 type Note {
     id: Int
     note: String
+    url: String
     created: DateTime
     done: DateTime
     type: String
@@ -313,9 +314,10 @@ type Mutation {
     summarize(content:String): String
 
     # notes
-    createNote(type:String, id:Int, note:String): Boolean
+    createNote(type:String, id:Int, note:String, url:String): Boolean
     deleteNote(id:Int) : Boolean
-    updateNote(id:Int, note:String): Boolean
+    # leave url out to keep the note's current url, or pass null to clear it
+    updateNote(id:Int, note:String, url:String): Boolean
     setNoteDone(id:Int, done:Boolean): Boolean
 
 

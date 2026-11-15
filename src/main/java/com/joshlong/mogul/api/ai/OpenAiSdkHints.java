@@ -148,8 +148,8 @@ class OpenAiSdkHints implements RuntimeHintsRegistrar {
 	}
 
 	/**
-	 * the SDK's file has the same name as other jars' unnamespaced ones, so it's picked
-	 * out by the jar it's in.
+	 * the SDK's file has the same name as other jars' namespaced ones, so it's picked out
+	 * by the jar it's in.
 	 */
 	private List<JsonNode> readSdkReflectConfig(ClassLoader classLoader) {
 		try {
@@ -168,7 +168,7 @@ class OpenAiSdkHints implements RuntimeHintsRegistrar {
 	}
 
 	private List<JsonNode> read(URL url) throws IOException {
-		try (InputStream in = url.openStream()) {
+		try (var in = url.openStream()) {
 			var root = JsonMapper.builder().build().readTree(in);
 			var entries = new ArrayList<JsonNode>();
 			root.forEach(entries::add);

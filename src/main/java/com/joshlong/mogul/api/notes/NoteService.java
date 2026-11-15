@@ -31,7 +31,11 @@ public interface NoteService {
 
 	<T extends Notable> Note create(Long mogulId, T payload, URI url, String note);
 
-	<T extends Notable> Note update(Long noteId, URI url, String note);
+	/**
+	 * replaces the text and the url of a note that belongs to the given mogul.
+	 * @return the updated note, or {@code null} if the mogul has no such note
+	 */
+	Note update(Long mogulId, Long noteId, URI url, String note);
 
 	Note setDone(Long mogulId, Long noteId, boolean done);
 

@@ -4,6 +4,7 @@ import com.joshlong.mogul.api.Note;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.utils.DateUtils;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.graphql.data.ArgumentValue;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
@@ -35,8 +36,19 @@ class NotesController {
 	}
 
 	@MutationMapping
-	boolean updateNote(@Argument Long id, @Argument String note) {
-		return this.noteService.update(id, null, note) != null;
+	boolean updateNote(@Argument Long id, @Argument String note, ArgumentValue<String> url) {
+		var mogul = this.mogulService.getCurrentMogul();
+		var newUrl = (URI) null;
+		if (url.isOmitted()) {
+			var existing = this.noteService.getNoteById(id);
+			if (existing == null || !existing.mogulId().equals(mogul.id()))
+				return false;
+			newUrl = existing.url();
+		} //
+		else {
+			newUrl = NoteUrls.parse(url.value());
+		}
+		return this.noteService.update(mogul.id(), id, newUrl, note) != null;
 	}
 
 	@MutationMapping
@@ -46,10 +58,11 @@ class NotesController {
 	}
 
 	@MutationMapping
-	boolean createNote(@Argument String type, @Argument Long id, @Argument String note) {
+	boolean createNote(@Argument String type, @Argument Long id, @Argument String note, @Argument String url) {
 		var mogul = this.mogulService.getCurrentMogul();
+		var parsedUrl = NoteUrls.parse(url);
 		var payload = this.noteService.resolveNotable(mogul.id(), id, type);
-		var newNote = this.noteService.create(mogul.id(), payload, null, note);
+		var newNote = this.noteService.create(mogul.id(), payload, parsedUrl, note);
 
 		return newNote != null;
 	}
