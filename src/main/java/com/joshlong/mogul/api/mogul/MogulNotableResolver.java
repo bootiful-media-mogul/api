@@ -18,4 +18,9 @@ class MogulNotableResolver extends AbstractNotableResolver<Mogul> {
 		return this.mogulService.getMogulById(key);
 	}
 
+	@Override
+	public Long mogulId(Mogul notable) {
+		return notable.id();
+	}
+
 }

@@ -4,11 +4,13 @@ import com.joshlong.mogul.api.Note;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.utils.DateUtils;
 import org.springframework.context.ApplicationEventPublisher;
+import com.joshlong.mogul.utils.TypeUtils;
 import org.springframework.graphql.data.ArgumentValue;
 import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.stereotype.Controller;
+import org.springframework.util.Assert;
 
 import java.net.URI;
 import java.time.OffsetDateTime;
@@ -16,9 +18,6 @@ import java.util.Collection;
 
 @Controller
 class NotesController {
-
-	// the type name of a note on the mogul itself, as the clients know it
-	private static final String MOGUL_TYPE = "mogul";
 
 	private final MogulService mogulService;
 
@@ -39,8 +38,8 @@ class NotesController {
 	}
 
 	@MutationMapping
-	boolean updateNote(@Argument Long id, @Argument String note, ArgumentValue<String> url,
-			ArgumentValue<String> title) {
+	boolean updateNote(@Argument Long id, @Argument String note, ArgumentValue<String> url, ArgumentValue<String> title,
+			@Argument String notableType, @Argument Long notableId) {
 		var mogul = this.mogulService.getCurrentMogul();
 		// leaving url or title out keeps what the note has: the studio edits only the
 		// text, and must not wipe what the clipper saved
@@ -49,7 +48,11 @@ class NotesController {
 			return false;
 		var newUrl = url.isOmitted() ? existing.url() : NoteUrls.parse(url.value());
 		var newTitle = title.isOmitted() ? existing.title() : title.value();
-		return this.noteService.update(mogul.id(), id, newUrl, newTitle, note) != null;
+		// a notableType and notableId move the note there; leaving them out keeps it put
+		Assert.isTrue((notableType == null) == (notableId == null),
+				"to move a note, give both its notableType and its notableId");
+		var notable = notableType == null ? null : this.noteService.resolveNotable(mogul.id(), notableId, notableType);
+		return this.noteService.update(mogul.id(), id, notable, newUrl, newTitle, note) != null;
 	}
 
 	@MutationMapping
@@ -83,21 +86,23 @@ class NotesController {
 	Collection<ClientNote> notesForUrl(@Argument String url) {
 		var mogul = this.mogulService.getCurrentMogul();
 		return this.noteService //
-			.notesForUrl(mogul.id(), mogul, NoteUrls.parse(url)) //
+			.notesForUrl(mogul.id(), NoteUrls.parse(url)) //
 			.stream() //
-			.map(note -> this.note(MOGUL_TYPE, note)) //
+			.map(note -> this.note(TypeUtils.typeName(note.payloadClass()), note)) //
 			.toList();
 	}
 
 	private ClientNote note(String type, Note note) {
-		return new ClientNote(type, note.id(), DateUtils.forDate(note.created()), DateUtils.forDate(note.done()),
-				note.url(), note.title(), note.note());
+		return new ClientNote(type, Long.parseLong(note.payload()), note.id(), DateUtils.forDate(note.created()),
+				DateUtils.forDate(note.done()), note.url(), note.title(), note.note());
 	}
 
 }
 
-record ClientNote(String type, Long id, OffsetDateTime created, OffsetDateTime done, URI url, String title,
-		String note) {
+// type and notableId say what the note is attached to: "mogul", "podcast", "episode",
+// "post"
+record ClientNote(String type, Long notableId, Long id, OffsetDateTime created, OffsetDateTime done, URI url,
+		String title, String note) {
 }
 
 record NoteCreatedEvent(Note note) {

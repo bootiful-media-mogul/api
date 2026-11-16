@@ -236,12 +236,14 @@ type SearchableResult {
 
 type Note {
     id: Int
+    # what the note is attached to: a type ("mogul", "podcast", "episode", "post") and its id
+    type: String
+    notableId: Int
     title: String
     note: String
     url: String
     created: DateTime
     done: DateTime
-    type: String
 }
 
 type EntityContext {
@@ -273,6 +275,7 @@ type Blog {
 
 type Post {
     id :Int
+    blogId: Int
     created: DateTime
     title :String
     content:String
@@ -317,8 +320,9 @@ type Mutation {
     # notes
     createNote(type:String, id:Int, note:String, url:String, title:String): Boolean
     deleteNote(id:Int) : Boolean
-    # leave url or title out to keep the note's current value, or pass null to clear it
-    updateNote(id:Int, note:String, url:String, title:String): Boolean
+    # leave url or title out to keep the note's current value, or pass null to clear it.
+    # give notableType and notableId to move the note there
+    updateNote(id:Int, note:String, url:String, title:String, notableType:String, notableId:Int): Boolean
     setNoteDone(id:Int, done:Boolean): Boolean
 
 
@@ -403,7 +407,7 @@ type Query {
 
     # notes
     notesForNotable(type:String, id:Int, includeDone:Boolean): [Note]
-    # the current mogul's own notes (clips) for exactly this url, newest first
+    # the current mogul's notes for exactly this url, wherever they're attached, newest first
     notesForUrl(url:String): [Note]
 
     # publicationService

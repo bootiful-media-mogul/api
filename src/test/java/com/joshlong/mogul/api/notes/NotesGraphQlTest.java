@@ -95,6 +95,132 @@ class NotesGraphQlTest {
 	}
 
 	@Test
+	void anotherMogulCannotAttachANoteToMyPodcast() {
+		var podcastId = this.ownerId("select p.id from podcast p where p.mogul_id = ? order by p.id limit 1");
+		var before = this.noteIds();
+		this.intruder.document("mutation($id:Int){ createNote(type:\"podcast\", id:$id, note:\"mine now\") }")
+			.variable("id", podcastId)
+			.execute()
+			.errors()
+			.satisfy(errors -> Assertions.assertFalse(errors.isEmpty(), "attaching to my podcast must be refused"));
+		Assertions.assertEquals(before, this.noteIds(), "no note should have been created on my podcast");
+	}
+
+	@Test
+	void aClipOnAnEpisodeIsFoundByItsUrl() {
+		var episodeId = this.ownerId("""
+				select e.id from podcast_episode e join podcast p on p.id = e.podcast_id
+				where p.mogul_id = ? order by e.id limit 1""");
+		var url = "https://example.com/" + java.util.UUID.randomUUID();
+		var noteId = this.createNote(this.owner, "episode", episodeId, url);
+
+		var found = this.notesForUrl(this.owner, url);
+		Assertions.assertEquals(1, found.size());
+		Assertions.assertEquals(noteId, ((Number) found.getFirst().get("id")).longValue());
+		Assertions.assertEquals("episode", found.getFirst().get("type"));
+		Assertions.assertEquals(episodeId, ((Number) found.getFirst().get("notableId")).longValue());
+	}
+
+	@Test
+	void aNoteCanMoveToAPostAndBack() {
+		var postId = this.ownerId("""
+				select bp.id from blog_post bp join blog b on b.id = bp.blog_id
+				where b.mogul_id = ? order by bp.id limit 1""");
+		var url = "https://example.com/" + java.util.UUID.randomUUID();
+		var noteId = this.createMogulNote(this.owner, "moving", url);
+
+		this.moveNote(this.owner, noteId, "post", postId).path("updateNote").entity(Boolean.class).isEqualTo(true);
+		var moved = this.notesForUrl(this.owner, url).getFirst();
+		Assertions.assertEquals("post", moved.get("type"));
+		Assertions.assertEquals(postId, ((Number) moved.get("notableId")).longValue());
+		Assertions.assertEquals("moving", moved.get("note"), "moving a note keeps its text");
+		Assertions.assertEquals(url, moved.get("url"), "moving a note keeps its url");
+
+		this.moveNote(this.owner, noteId, "mogul", this.ownerId)
+			.path("updateNote")
+			.entity(Boolean.class)
+			.isEqualTo(true);
+		var back = this.notesForUrl(this.owner, url).getFirst();
+		Assertions.assertEquals("mogul", back.get("type"));
+		Assertions.assertEquals(this.ownerId, ((Number) back.get("notableId")).longValue());
+	}
+
+	@Test
+	void anotherMogulCannotMoveTheirNoteOntoMyPost() {
+		var postId = this.ownerId("""
+				select bp.id from blog_post bp join blog b on b.id = bp.blog_id
+				where b.mogul_id = ? order by bp.id limit 1""");
+		var intruderId = this.mogulService.getMogulByName(INTRUDER).id();
+		var url = "https://example.com/" + java.util.UUID.randomUUID();
+		var before = this.noteIds();
+		this.intruder
+			.document("mutation($id:Int,$url:String){ createNote(type:\"mogul\", id:$id, note:\"theirs\", url:$url) }")
+			.variable("id", intruderId)
+			.variable("url", url)
+			.execute()
+			.path("createNote")
+			.entity(Boolean.class)
+			.isEqualTo(true);
+		var after = this.noteIds();
+		after.removeAll(before);
+		var noteId = after.getFirst();
+		this.createdNoteIds.add(noteId);
+
+		this.moveNote(this.intruder, noteId, "post", postId)
+			.errors()
+			.satisfy(errors -> Assertions.assertFalse(errors.isEmpty(), "moving onto my post must be refused"));
+		var theirs = this.notesForUrl(this.intruder, url).getFirst();
+		Assertions.assertEquals("mogul", theirs.get("type"), "the note stays where it was");
+	}
+
+	@Test
+	void aPostSaysWhichBlogItIsIn() {
+		var row = this.db.sql("""
+				select bp.id, bp.blog_id from blog_post bp join blog b on b.id = bp.blog_id
+				where b.mogul_id = ? order by bp.id limit 1""")
+			.param(this.ownerId)
+			.query((rs, _) -> new long[] { rs.getLong("id"), rs.getLong("blog_id") })
+			.single();
+		this.owner.document("query($id:Int){ postById(postId:$id){ blogId } }")
+			.variable("id", row[0])
+			.execute()
+			.path("postById.blogId")
+			.entity(Long.class)
+			.isEqualTo(row[1]);
+	}
+
+	private Long ownerId(String sql) {
+		return this.db.sql(sql).param(this.ownerId).query(Long.class).single();
+	}
+
+	private Long createNote(HttpGraphQlTester tester, String type, Long notableId, String url) {
+		var before = this.noteIds();
+		tester
+			.document(
+					"mutation($type:String,$id:Int,$url:String){ createNote(type:$type, id:$id, note:\"\", url:$url) }")
+			.variable("type", type)
+			.variable("id", notableId)
+			.variable("url", url)
+			.execute()
+			.path("createNote")
+			.entity(Boolean.class)
+			.isEqualTo(true);
+		var after = this.noteIds();
+		after.removeAll(before);
+		Assertions.assertEquals(1, after.size());
+		this.createdNoteIds.add(after.getFirst());
+		return after.getFirst();
+	}
+
+	private org.springframework.graphql.test.tester.GraphQlTester.Response moveNote(HttpGraphQlTester tester,
+			Long noteId, String type, Long notableId) {
+		return tester.document("""
+				mutation($id:Int,$type:String,$notableId:Int){
+				  updateNote(id:$id, note:"moving", notableType:$type, notableId:$notableId)
+				}""").variable("id", noteId).variable("type", type).variable("notableId", notableId).execute();
+	}
+
+	@Test
 	void findMyNoteForAUrl() {
 		var url = "https://example.com/" + java.util.UUID.randomUUID();
 		Assertions.assertTrue(this.notesForUrl(this.owner, url).isEmpty(), "a page i haven't clipped has no note");
@@ -115,7 +241,7 @@ class NotesGraphQlTest {
 	@SuppressWarnings("unchecked")
 	private List<Map<String, Object>> notesForUrl(HttpGraphQlTester tester, String url) {
 		return (List<Map<String, Object>>) (List<?>) tester
-			.document("query($url:String){ notesForUrl(url:$url){ id title note url created } }")
+			.document("query($url:String){ notesForUrl(url:$url){ id title note url created type notableId } }")
 			.variable("url", url)
 			.execute()
 			.path("notesForUrl")

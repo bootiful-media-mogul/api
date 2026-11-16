@@ -17,6 +17,7 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.SqlArrayValue;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.Assert;
 
 import java.net.URI;
 import java.util.*;
@@ -64,7 +65,12 @@ class DefaultNoteService extends AbstractDomainService<Notable, NotableResolver<
 	@Override
 	public <T extends Notable> T resolveNotable(Long mogulId, Long id, Class<T> clazz) {
 		this.mogulService.assertAuthorizedMogul(mogulId);
-		return this.findEntity(clazz, id);
+		var notable = this.findEntity(clazz, id);
+		// a note may only go on the mogul's own things
+		var owner = notable == null ? null : ((NotableResolver<T>) this.findResolver(clazz)).mogulId(notable);
+		Assert.state(owner != null && owner.equals(mogulId),
+				"there is no " + clazz.getSimpleName() + " [" + id + "] for mogul [" + mogulId + "]");
+		return notable;
 	}
 
 	@Override
@@ -129,7 +135,7 @@ class DefaultNoteService extends AbstractDomainService<Notable, NotableResolver<
 	}
 
 	@Override
-	public <T extends Notable> Collection<Note> notesForUrl(Long mogulId, T payload, URI url) {
+	public Collection<Note> notesForUrl(Long mogulId, URI url) {
 		if (url == null)
 			return List.of();
 		return this.db //
@@ -137,22 +143,33 @@ class DefaultNoteService extends AbstractDomainService<Notable, NotableResolver<
 					select *
 					from note
 					where mogul_id = ?
-					  and payload = ?
-					  and payload_class = ?
 					  and url = ?
 					order by created desc, id desc
 					""") //
-			.params(mogulId, JsonUtils.write(payload.notableKey()), payload.getClass().getName(), url.toString()) //
+			.params(mogulId, url.toString()) //
 			.query(this.noteRowMapper) //
 			.list();
 	}
 
 	@Override
 	public Note update(Long mogulId, Long noteId, URI url, String title, String note) {
+		return this.update(mogulId, noteId, null, url, title, note);
+	}
+
+	@Override
+	public <T extends Notable> Note update(Long mogulId, Long noteId, T notable, URI url, String title, String note) {
 		NoteUrls.assertWebUrl(url);
-		var updated = this.db.sql("update note set url = ?, title = ?, note = ? where id = ? and mogul_id = ?") //
-			.params(url == null ? null : url.toString(), blankToNull(title), nonNull(note), noteId, mogulId) //
-			.update();
+		var updated = notable == null //
+				? this.db.sql("update note set url = ?, title = ?, note = ? where id = ? and mogul_id = ?") //
+					.params(url == null ? null : url.toString(), blankToNull(title), nonNull(note), noteId, mogulId) //
+					.update() //
+				: this.db.sql("""
+						update note set url = ?, title = ?, note = ?, payload = ?, payload_class = ?
+						where id = ? and mogul_id = ?
+						""") //
+					.params(url == null ? null : url.toString(), blankToNull(title), nonNull(note),
+							JsonUtils.write(notable.notableKey()), notable.getClass().getName(), noteId, mogulId) //
+					.update();
 		if (updated == 0) {
 			return null;
 		}

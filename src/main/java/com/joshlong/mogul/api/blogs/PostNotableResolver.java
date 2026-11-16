@@ -18,4 +18,9 @@ class PostNotableResolver extends AbstractNotableResolver<Post> {
 		return this.blogService.getPostById(key);
 	}
 
+	@Override
+	public Long mogulId(Post notable) {
+		return notable.mogulId();
+	}
+
 }

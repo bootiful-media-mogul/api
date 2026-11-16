@@ -18,4 +18,10 @@ class EpisodeNotableResolver extends AbstractNotableResolver<Episode> {
 		return this.podcastService.getPodcastEpisodeById(key);
 	}
 
+	@Override
+	public Long mogulId(Episode notable) {
+		var podcast = this.podcastService.getPodcastById(notable.podcastId());
+		return podcast == null ? null : podcast.mogulId();
+	}
+
 }
