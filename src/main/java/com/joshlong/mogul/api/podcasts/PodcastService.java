@@ -77,6 +77,11 @@ public interface PodcastService {
 
 	Podcast getPodcastById(Long podcastId);
 
+	/**
+	 * the ids of every segment of every episode of every podcast the mogul has.
+	 */
+	Collection<Long> getPodcastEpisodeSegmentIdsByMogul(Long mogulId);
+
 	Episode getPodcastEpisodeById(Long episodeId);
 
 	Podcast updatePodcast(Long podcastId, String title);

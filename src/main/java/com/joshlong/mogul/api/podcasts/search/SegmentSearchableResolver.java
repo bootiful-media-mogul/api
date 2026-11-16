@@ -33,43 +33,54 @@ class SegmentSearchableResolver extends AbstractSearchableResolver<Segment> {
 
 	@Override
 	public List<SearchableResult<Segment>> results(List<Long> searchableIds) {
-		if (searchableIds.isEmpty())
-			return new ArrayList<>();
-
-		var segments = this.podcastService.getPodcastEpisodeSegmentsByIds(searchableIds);
-		var episodeIds = new HashSet<Long>();
-		for (var segment : segments) {
-			episodeIds.add(segment.episodeId());
-		}
-		// now we load all the episodes and correlate them back to their episode
-		var episodes = this.podcastService.getAllPodcastEpisodesByIds(episodeIds);
-		// now we need to load all the podcasts in a single batch to deduce the mogul
-		var podcastIds = episodes.stream().map(Episode::podcastId).toList();
-		var podcasts = this.podcastService.getAllPodcastsById(podcastIds);
-		var segmentsToEpisodes = new HashMap<Segment, Episode>();
-		for (var s : segments) {
-			episodes.stream()
-				.filter(e -> e.id().equals(s.episodeId()))
-				.findFirst()
-				.ifPresent(it -> segmentsToEpisodes.put(s, it));
-		}
 		var results = new ArrayList<SearchableResult<Segment>>();
-		var mogulId = podcasts.iterator().next().mogulId();
-		var transcribableIds = segments.stream().map(s -> (Transcribable) s).toList();
-		var mapOfTranscripts = this.transcriptLoader.apply(mogulId, transcribableIds);
-		var mapOfTranscribableIdsToTranscripts = new HashMap<Long, String>();
-		mapOfTranscripts.forEach((key, value) -> mapOfTranscribableIdsToTranscripts.put(key.transcribableId(), value));
+		if (searchableIds.isEmpty())
+			return results;
+		var segments = this.podcastService.getPodcastEpisodeSegmentsByIds(searchableIds);
+		if (segments.isEmpty())
+			return results;
+		// the episodes, then the podcasts, each in one batch, to find every segment's
+		// owner
+		var episodesById = new HashMap<Long, Episode>();
+		var episodeIds = new HashSet<Long>();
+		for (var segment : segments)
+			episodeIds.add(segment.episodeId());
+		for (var episode : this.podcastService.getAllPodcastEpisodesByIds(episodeIds))
+			episodesById.put(episode.id(), episode);
+		var podcastIds = episodesById.values().stream().map(Episode::podcastId).distinct().toList();
+		var mogulsByPodcast = new HashMap<Long, Long>();
+		for (var podcast : this.podcastService.getAllPodcastsById(podcastIds))
+			mogulsByPodcast.put(podcast.id(), podcast.mogulId());
+		// a batch can span moguls, and transcripts are read one mogul at a time
+		var segmentsByMogul = new HashMap<Long, List<Segment>>();
 		for (var segment : segments) {
-			var episode = segmentsToEpisodes.get(segment);
-			var result = this.buildResultFor(segment, episode, mapOfTranscribableIdsToTranscripts.get((segment.id())));
-			results.add(result);
+			var episode = episodesById.get(segment.episodeId());
+			var mogulId = episode == null ? null : mogulsByPodcast.get(episode.podcastId());
+			if (mogulId != null)
+				segmentsByMogul.computeIfAbsent(mogulId, _ -> new ArrayList<>()).add(segment);
+		}
+		for (var entry : segmentsByMogul.entrySet()) {
+			var mogulId = entry.getKey();
+			var transcribables = entry.getValue().stream().map(s -> (Transcribable) s).toList();
+			var transcripts = new HashMap<Long, String>();
+			this.transcriptLoader.apply(mogulId, transcribables)
+				.forEach((transcribable, transcript) -> transcripts.put(transcribable.transcribableId(), transcript));
+			for (var segment : entry.getValue())
+				results.add(this.buildResultFor(segment, episodesById.get(segment.episodeId()),
+						transcripts.get(segment.id()), mogulId));
 		}
 		return results;
 	}
 
-	private SearchableResult<Segment> buildResultFor(Segment segment, Episode episode, String transcript) {
+	@Override
+	public Collection<Long> searchableIds(Long mogulId) {
+		return this.podcastService.getPodcastEpisodeSegmentIdsByMogul(mogulId);
+	}
+
+	private SearchableResult<Segment> buildResultFor(Segment segment, Episode episode, String transcript,
+			Long mogulId) {
 		return new SearchableResult<>(segment.searchableId(), segment, episode.title(), transcript, episode.id(),
-				episode.created(), this.type);
+				episode.created(), this.type, mogulId);
 	}
 
 }

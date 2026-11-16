@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.blogs;
 
+import com.joshlong.mogul.api.SearchableDeletedEvent;
 import com.joshlong.mogul.api.ai.AiClient;
 import com.joshlong.mogul.api.compositions.Composition;
 import com.joshlong.mogul.api.compositions.CompositionService;
@@ -194,6 +195,7 @@ class DefaultBlogService implements BlogService {
 		var composition = this.getDescriptionComposition(postId);
 		this.compositionService.deleteCompositionById(composition.id());
 		this.db.sql("delete from blog_post where id = ? ").params(postId).update();
+		this.publisher.publishEvent(new SearchableDeletedEvent(Post.class, postId));
 	}
 
 	@Override

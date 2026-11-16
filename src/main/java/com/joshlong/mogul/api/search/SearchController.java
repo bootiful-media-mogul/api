@@ -2,6 +2,7 @@ package com.joshlong.mogul.api.search;
 
 import com.joshlong.mogul.api.Searchable;
 import com.joshlong.mogul.api.SearchableResult;
+import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.utils.DateUtils;
 import com.joshlong.mogul.utils.JsonUtils;
 import org.springframework.graphql.data.method.annotation.Argument;
@@ -18,8 +19,11 @@ class SearchController {
 
 	private final SearchService searchService;
 
-	SearchController(SearchService searchService) {
+	private final MogulService mogulService;
+
+	SearchController(SearchService searchService, MogulService mogulService) {
 		this.searchService = searchService;
+		this.mogulService = mogulService;
 	}
 
 	@SchemaMapping
@@ -34,7 +38,7 @@ class SearchController {
 
 	@QueryMapping
 	Collection<SearchableResult<Searchable>> search(@Argument String query, @Argument Map<String, Object> metadata) {
-		return this.searchService.search(query, metadata);
+		return this.searchService.search(this.mogulService.getCurrentMogul().id(), query, metadata);
 	}
 
 }

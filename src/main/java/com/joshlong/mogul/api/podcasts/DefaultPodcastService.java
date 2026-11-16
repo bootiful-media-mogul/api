@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.podcasts;
 
+import com.joshlong.mogul.api.SearchableDeletedEvent;
 import com.joshlong.mogul.api.cleanvoice.AudioCleanedEvent;
 import com.joshlong.mogul.api.cleanvoice.AudioCleaning;
 import com.joshlong.mogul.api.cleanvoice.AudioCleaningFailedEvent;
@@ -302,6 +303,16 @@ class DefaultPodcastService implements PodcastService {
 		Assert.state(owned == 1,
 				() -> "podcast episode segment #" + segmentId + " does not belong to mogul #" + mogulId);
 		return CollectionUtils.firstOrNull(this.getPodcastEpisodeSegmentsByIds(List.of(segmentId)));
+	}
+
+	@Override
+	public Collection<Long> getPodcastEpisodeSegmentIdsByMogul(Long mogulId) {
+		return this.db.sql("""
+				select pes.id from podcast_episode_segment pes
+				join podcast_episode pe on pe.id = pes.podcast_episode_id
+				join podcast p on p.id = pe.podcast_id
+				where p.mogul_id = ?
+				""").param(mogulId).query(Long.class).list();
 	}
 
 	@Override
@@ -698,6 +709,7 @@ class DefaultPodcastService implements PodcastService {
 			managedFilesToDelete.add(segment.cleanedAudio().id());
 		this.markPodcastEpisodeBySegmentAssetsDirty(episodeSegmentId);
 		this.db.sql("delete from podcast_episode_segment where id =?").params(episodeSegmentId).update();
+		this.publisher.publishEvent(new SearchableDeletedEvent(Segment.class, episodeSegmentId));
 		for (var managedFileId : managedFilesToDelete)
 			this.managedFileService.deleteManagedFile(managedFileId);
 		this.reorderSegments(this.getPodcastEpisodeSegmentsByEpisode(segment.episodeId()));
@@ -753,6 +765,8 @@ class DefaultPodcastService implements PodcastService {
 				.param(episodeId)
 				.update();
 			this.log.info("deleted {} segments for episode {}", deleted, episodeId);
+			for (var segment : segmentsForEpisode)
+				this.publisher.publishEvent(new SearchableDeletedEvent(Segment.class, segment.id()));
 			this.db.sql("delete from podcast_episode where id = ?").param(episode.id()).update();
 
 			for (var managedFileId : ids) {

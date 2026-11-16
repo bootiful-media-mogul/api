@@ -4,6 +4,7 @@ import com.joshlong.mogul.api.AbstractDomainService;
 import com.joshlong.mogul.api.Notable;
 import com.joshlong.mogul.api.NotableResolver;
 import com.joshlong.mogul.api.Note;
+import com.joshlong.mogul.api.SearchableDeletedEvent;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.utils.JsonUtils;
 import com.joshlong.mogul.utils.ReflectionUtils;
@@ -59,7 +60,12 @@ class DefaultNoteService extends AbstractDomainService<Notable, NotableResolver<
 
 	@Override
 	public boolean deleteNote(Long mogulId, Long noteId) {
-		return this.db.sql("delete from note where id = ? and mogul_id = ?").params(noteId, mogulId).update() > 0;
+		var deleted = this.db.sql("delete from note where id = ? and mogul_id = ?")
+			.params(noteId, mogulId)
+			.update() > 0;
+		if (deleted)
+			this.publisher.publishEvent(new SearchableDeletedEvent(Note.class, noteId));
+		return deleted;
 	}
 
 	@Override

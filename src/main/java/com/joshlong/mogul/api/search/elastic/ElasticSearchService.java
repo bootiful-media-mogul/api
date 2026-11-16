@@ -2,6 +2,7 @@ package com.joshlong.mogul.api.search.elastic;
 
 import com.joshlong.mogul.api.AbstractDomainService;
 import com.joshlong.mogul.api.Searchable;
+import com.joshlong.mogul.api.SearchableDeletedEvent;
 import com.joshlong.mogul.api.SearchableResolver;
 import com.joshlong.mogul.api.SearchableResult;
 import com.joshlong.mogul.api.search.SearchService;
@@ -18,6 +19,7 @@ import org.springframework.data.elasticsearch.annotations.FieldType;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHits;
+import org.springframework.data.elasticsearch.core.query.DeleteQuery;
 import org.springframework.data.elasticsearch.repository.ElasticsearchRepository;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Service;
@@ -38,6 +40,9 @@ class ElasticSearchService extends AbstractDomainService<Searchable, SearchableR
 
 	static final String INDEX_NAME = "searchables";
 
+	// how many searchables the rebuild loads and writes at a time
+	private static final int BATCH_SIZE = 100;
+
 	private final Logger log = LoggerFactory.getLogger(getClass());
 
 	private final DocumentRepository documentRepository;
@@ -51,46 +56,74 @@ class ElasticSearchService extends AbstractDomainService<Searchable, SearchableR
 		this.ops = ops;
 	}
 
-	private String keyFor(@Nullable Class<?> clzz) {
-		return clzz != null ? clzz.getName() : null;
+	/**
+	 * an entry's id names its type as well as its id: posts, segments, and notes are
+	 * numbered separately, so post 5 and note 5 would otherwise share one entry, and
+	 * whichever was indexed last would replace the other.
+	 */
+	private String entryId(Class<?> type, long searchableId) {
+		return this.typeForClass(type) + ":" + searchableId;
 	}
 
 	@Override
 	public void index(Searchable searchable) {
 		this.log.info("indexing for searchable {}", searchable);
-		var searchableId = searchable.searchableId();
-		var searchableClass = searchable.getClass();
-		var clzz = this.keyFor(searchableClass);
-		var repo = this.findResolver(searchableClass);
-		Assert.notNull(repo, () -> "there's no repository for " + clzz + "!");
-		var results = repo.results(List.of(searchableId));
-		if (!results.isEmpty()) {
-			var result = results.getFirst();
-			var text = result.text();
-			var title = result.title();
-			if (StringUtils.hasText(title)) {
-				var document = new Document(Long.toString(searchableId), searchableId, title, Instant.now(),
-						StringUtils.hasText(text) ? text : "", clzz);
-				this.documentRepository.save(document);
-			} //
-			else {
-				this.log.debug("we've got nothing to index for" + " searchable {} with class {}!", searchableId, clzz);
-			}
-		}
+		var searchableClass = (Class<? extends Searchable>) searchable.getClass();
+		var resolver = this.findResolver(searchableClass);
+		Assert.notNull(resolver, () -> "there's no resolver for " + searchableClass.getName() + "!");
+		var results = resolver.results(List.of(searchable.searchableId()));
+		var document = results.isEmpty() ? null : this.documentFor(results.getFirst());
+		if (document != null)
+			this.documentRepository.save(document);
+		else
+			this.delete(searchableClass, searchable.searchableId());
 	}
 
 	@Override
-	public <T extends Searchable> Collection<SearchableResult<T>> search(String shouldContain,
+	public void delete(Class<? extends Searchable> type, Long searchableId) {
+		var id = this.entryId(type, searchableId);
+		try {
+			this.ops.delete(id, Document.class);
+			this.log.debug("deleted the search entry {}", id);
+		} //
+		catch (RuntimeException e) {
+			this.log.warn("couldn't delete the search entry {}", id, e);
+		}
+	}
+
+	@ApplicationModuleListener
+	void searchableDeleted(SearchableDeletedEvent event) {
+		this.delete(event.type(), event.searchableId());
+	}
+
+	/**
+	 * the entry for a result, or {@code null} if there's nothing worth indexing: no
+	 * title, or no owner to file it under.
+	 */
+	private @Nullable Document documentFor(SearchableResult<?> result) {
+		if (!StringUtils.hasText(result.title()) || result.mogulId() == null)
+			return null;
+		var type = result.searchable().getClass();
+		return new Document(this.entryId(type, result.searchableId()), result.searchableId(), result.title(),
+				Instant.now(), StringUtils.hasText(result.text()) ? result.text() : "", type.getName(),
+				result.mogulId());
+	}
+
+	@Override
+	public <T extends Searchable> Collection<SearchableResult<T>> search(Long mogulId, String shouldContain,
 			Map<String, Object> metadata) {
-		this.log.info("searching for [{}] with metadata {}", shouldContain, metadata);
+		Assert.notNull(mogulId, "searches are always for a mogul");
+		this.log.info("searching for [{}] for mogul {} with metadata {}", shouldContain, mogulId, metadata);
 		var nativeQuery = NativeQuery.builder() //
 			.withQuery(q -> q //
 				.bool(b -> {
-					// Must match this term
+					// only the mogul's own entries: a filter, so elasticsearch does it,
+					// and
+					// it doesn't change how the matches are ranked
+					b.filter(f -> f.term(t -> t.field("mogulId").value(mogulId)));
 					b.must(m -> m.multiMatch(
 							mm -> mm.query(shouldContain).fields("title^2", "description^2").fuzziness("AUTO")));
-
-					// Should match (boosts relevance if present)
+					// should match (boosts relevance if present)
 					if (StringUtils.hasText(shouldContain)) {
 						b.should(s -> s.match(mt -> mt.field("description").query(shouldContain)));
 					}
@@ -98,54 +131,98 @@ class ElasticSearchService extends AbstractDomainService<Searchable, SearchableR
 				})) //
 			.withMaxResults(1000) //
 			.build();
-		var search = this.ops.search(nativeQuery, Document.class);
-		var rankedSearchableResults = this.mapDocumentsToSearchable(search);
-		return rankedSearchableResults.stream()
-			.map(rsr -> new SearchableResult<>(rsr.searchableId(), (T) rsr.searchable(), rsr.title(), rsr.text(),
-					rsr.aggregateId(), rsr.created(), rsr.type(), rsr.context()))
+		var hits = this.ops.search(nativeQuery, Document.class);
+		return this.resultsFor(mogulId, hits).stream().map(r -> (SearchableResult<T>) r).toList();
+	}
+
+	private record Entry(Class<? extends Searchable> type, long searchableId) {
+	}
+
+	private List<SearchableResult<? extends Searchable>> resultsFor(Long mogulId, SearchHits<Document> hits) {
+		var ranks = new HashMap<Entry, Float>();
+		var idsByType = new LinkedHashMap<Class<? extends Searchable>, List<Long>>();
+		for (var hit : hits) {
+			var document = hit.getContent();
+			var type = (Class<? extends Searchable>) ReflectionUtils.classForName(document.className());
+			ranks.put(new Entry(type, document.searchableId()), hit.getScore());
+			idsByType.computeIfAbsent(type, _ -> new ArrayList<>()).add(document.searchableId());
+		}
+		// one result per thing: the segments of an episode, say, come back as the episode
+		// once, at the rank of its best match. keyed by type as well as aggregate id,
+		// since a post and an episode can have the same id
+		var best = new HashMap<String, RankedSearchableResult<? extends Searchable>>();
+		var dead = new ArrayList<Entry>();
+		for (var entry : idsByType.entrySet()) {
+			var type = entry.getKey();
+			var ids = entry.getValue();
+			var resolver = this.findResolver(type);
+			Assert.notNull(resolver, () -> "there must be a valid resolver for " + type);
+			var resolved = new HashSet<Long>();
+			for (var result : resolver.results(ids)) {
+				resolved.add(result.searchableId());
+				// the filter already did this; it's here in case an entry's owner is
+				// stale
+				if (!mogulId.equals(result.mogulId()))
+					continue;
+				var rank = ranks.getOrDefault(new Entry(type, result.searchableId()), 0.0f);
+				best.merge(result.type() + ":" + result.aggregateId(), new RankedSearchableResult<>(rank, result),
+						(a, b) -> a.rank() >= b.rank() ? a : b);
+			}
+			for (var id : ids)
+				if (!resolved.contains(id))
+					dead.add(new Entry(type, id));
+		}
+		// entries for things that are gone: not results, and not worth keeping
+		for (var entry : dead)
+			this.delete(entry.type(), entry.searchableId());
+		return best.values()
+			.stream()
+			.sorted((a, b) -> Float.compare(b.rank(), a.rank()))
+			.<SearchableResult<? extends Searchable>>map(RankedSearchableResult::searchableResult)
 			.toList();
 	}
 
-	@SuppressWarnings("unchecked")
-	private List<SearchableResult<? extends Searchable>> mapDocumentsToSearchable(SearchHits<Document> search) {
-		var searchableToRank = new HashMap<Long, Float>();
-		var resultsBucketedByClass = new HashMap<Class<?>, List<Document>>();
-		var classToResolvers = new HashMap<Class<?>, SearchableResolver<?>>();
-		for (var doc : search) {
-			var clzz = (Class<Searchable>) ReflectionUtils.classForName(doc.getContent().className());
-			resultsBucketedByClass.computeIfAbsent(clzz, _ -> new ArrayList<>()).add(doc.getContent());
-			classToResolvers.computeIfAbsent(clzz, _ -> this.findResolver(clzz));
-			searchableToRank.put(doc.getContent().searchableId(), doc.getScore());
-		}
-		var map = new HashMap<Long, ArrayList<RankedSearchableResult<? extends Searchable>>>();
-		for (var entry : resultsBucketedByClass.entrySet()) {
-			var docs = entry.getValue();
-			var clazz = entry.getKey();
-			var searchableIds = docs.stream().map(Document::searchableId).toList();
-			var resolver = classToResolvers.get(clazz);
-			Assert.notNull(resolver, "there must be a valid resolver for " + clazz);
-			for (var searchableResult : resolver.results(searchableIds)) {
-				var rank = searchableToRank.getOrDefault(searchableResult.searchableId(), 0.0f);
-				map.computeIfAbsent(searchableResult.aggregateId(), _ -> new ArrayList<>())
-					.add(new RankedSearchableResult<>(rank, searchableResult));
+	@Override
+	public int rebuild(Long mogulId) {
+		Assert.notNull(mogulId, "a rebuild is always for a mogul");
+		var indexOps = this.ops.indexOps(Document.class);
+		// the index's mapping, declared rather than guessed from the first document, so
+		// that mogulId is there to filter on from the start
+		if (indexOps.exists())
+			indexOps.putMapping();
+		else
+			indexOps.createWithMapping();
+		// the mogul's entries, and any from before entries had owners: nobody can find
+		// those any more, and the rebuild writes the mogul's back
+		var stale = NativeQuery.builder()
+			.withQuery(q -> q.bool(b -> b.should(s -> s.term(t -> t.field("mogulId").value(mogulId)))
+				.should(s -> s.bool(n -> n.mustNot(m -> m.exists(e -> e.field("mogulId")))))
+				.minimumShouldMatch("1")))
+			.build();
+		this.ops.delete(DeleteQuery.builder(stale).build(), Document.class);
+		var written = 0;
+		for (var resolver : this.resolvers) {
+			var ids = new ArrayList<>(resolver.searchableIds(mogulId));
+			for (var from = 0; from < ids.size(); from += BATCH_SIZE) {
+				var batch = ids.subList(from, Math.min(ids.size(), from + BATCH_SIZE));
+				var documents = new ArrayList<Document>();
+				for (var result : resolver.results(batch)) {
+					if (!mogulId.equals(result.mogulId()))
+						continue;
+					var document = this.documentFor(result);
+					if (document != null)
+						documents.add(document);
+				}
+				if (!documents.isEmpty())
+					this.documentRepository.saveAll(documents);
+				written += documents.size();
 			}
 		}
-		var searchableResults = new ArrayList<RankedSearchableResult<? extends Searchable>>();
-		for (var entry : map.entrySet()) {
-			entry.getValue()
-				.stream()
-				.max((o1, o2) -> Float.compare(o2.rank(), o1.rank()))
-				.ifPresent(searchableResults::add);
-		}
-		searchableResults.sort((o1, o2) -> Float.compare(o2.rank(), o1.rank()));
-		var finalList = new ArrayList<SearchableResult<? extends Searchable>>();
-		for (var r : searchableResults) {
-			finalList.add(r.searchableResult());
-		}
-		return finalList;
+		indexOps.refresh();
+		this.log.info("rebuilt the search index for mogul {}: {} entries", mogulId, written);
+		return written;
 	}
 
-	@SuppressWarnings("unchecked")
 	@ApplicationModuleListener
 	void indexForSearchOnTranscriptCompletion(TranscriptRecordedEvent event) {
 		var aClazz = (Class<? extends Searchable>) event.type();
@@ -161,10 +238,14 @@ record RankedSearchableResult<T extends Searchable>(float rank, SearchableResult
 
 }
 
+/**
+ * an entry in the index. {@code id} is the type and the id ({@code note:5});
+ * {@code mogulId} is the owner, which every search filters on.
+ */
 @org.springframework.data.elasticsearch.annotations.Document(indexName = ElasticSearchService.INDEX_NAME)
 record Document(@Id String id, @Field(type = FieldType.Long) Long searchableId,
 		@Field(type = FieldType.Text, analyzer = "english") String title,
 		@Field(type = FieldType.Date, format = DateFormat.epoch_millis) Instant when,
 		@Field(type = FieldType.Text, analyzer = "english") String description,
-		@Field(type = FieldType.Text) String className) {
+		@Field(type = FieldType.Text) String className, @Field(type = FieldType.Long) Long mogulId) {
 }

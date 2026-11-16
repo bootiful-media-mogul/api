@@ -36,8 +36,13 @@ class NoteSearchableResolver extends AbstractSearchableResolver<Note> {
 		var context = Map.of("type", (Object) TypeUtils.typeName(Note.class), "id", note.id());
 		var title = note.title() != null ? note.title() : note.note();
 		var text = note.url() == null ? note.note() : note.note() + "\n" + note.url();
-		return new SearchableResult<>(note.searchableId(), note, title, text, notableId, new Date(), this.type,
-				context);
+		return new SearchableResult<>(note.searchableId(), note, title, text, notableId, new Date(), this.type, context,
+				note.mogulId());
+	}
+
+	@Override
+	public Collection<Long> searchableIds(Long mogulId) {
+		return this.noteService.getNotesByMogul(mogulId).stream().map(Note::id).toList();
 	}
 
 	@Override

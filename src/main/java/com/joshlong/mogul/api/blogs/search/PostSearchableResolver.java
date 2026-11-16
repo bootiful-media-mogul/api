@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
@@ -38,7 +39,16 @@ class PostSearchableResolver extends AbstractSearchableResolver<Post> {
 
 	private SearchableResult<Post> buildResultFor(Post post, String transcript) {
 		return new SearchableResult<>(post.searchableId(), post, post.title(), transcript, post.id(), post.created(),
-				this.type);
+				this.type, post.mogulId());
+	}
+
+	@Override
+	public Collection<Long> searchableIds(Long mogulId) {
+		var ids = new ArrayList<Long>();
+		for (var blog : this.blogService.getBlogsFor(mogulId))
+			for (var post : this.blogService.getPostsForBlog(blog.id()))
+				ids.add(post.id());
+		return ids;
 	}
 
 	@Override
