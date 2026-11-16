@@ -31,6 +31,11 @@ class DefaultBlogService implements BlogService {
 
 	private final CompositionService compositionService;
 
+	// a post's owner is its blog's: blog_post has no mogul_id of its own. every query
+	// that
+	// feeds the PostRowMapper starts with this
+	private static final String POST_SELECT = " select bp.*, b.mogul_id from blog_post bp join blog b on b.id = bp.blog_id ";
+
 	private final RowMapper<Post> postRowMapper = new PostRowMapper();
 
 	private final JdbcClient db;
@@ -108,8 +113,8 @@ class DefaultBlogService implements BlogService {
 	}
 
 	private Collection<Post> postsForBlog(long blogId, boolean visibleOnly) {
-		var sql = " select * from blog_post where blog_id = ? " + (visibleOnly ? " and visible = true " : "")
-				+ " order by created desc ";
+		var sql = POST_SELECT + " where bp.blog_id = ? " + (visibleOnly ? " and bp.visible = true " : "")
+				+ " order by bp.created desc ";
 		return this.db //
 			.sql(sql) //
 			.params(blogId) //
@@ -173,7 +178,7 @@ class DefaultBlogService implements BlogService {
 	public Map<Long, Post> getPostsByIds(Collection<Long> ids) {
 		var map = new HashMap<Long, Post>();
 		var list = this.db //
-			.sql(" select * from blog_post where id = any(?) ") //
+			.sql(POST_SELECT + " where bp.id = any(?) ") //
 			.params(new SqlArrayValue("bigint", ids.toArray())) //
 			.query(this.postRowMapper) //
 			.list();
@@ -280,7 +285,7 @@ class DefaultBlogService implements BlogService {
 	@Override
 	public Collection<Post> findPostsByTitle(Long blogId, String title) {
 		return this.db //
-			.sql(" select * from blog_post where blog_id = ? and title ilike ? ")//
+			.sql(POST_SELECT + " where bp.blog_id = ? and bp.title ilike ? ")//
 			.params(blogId, title)//
 			.query(this.postRowMapper)//
 			.list();
@@ -310,7 +315,7 @@ class DefaultBlogService implements BlogService {
 			// timestamp, and the editor lets you set the time of day, so reading it
 			// back through getDate threw away what had just been saved. every other row
 			// mapper here -- Blog, Episode, Podcast -- already uses getTimestamp.
-			return new Post(rs.getLong("blog_id"), rs.getLong("id"), rs.getString("title"), rs.getTimestamp("created"),
+			return new Post(rs.getLong("mogul_id"), rs.getLong("id"), rs.getString("title"), rs.getTimestamp("created"),
 					rs.getString("content"), rs.getBoolean("complete"), rs.getBoolean("visible"), new HashMap<>(),
 					rs.getString("summary"), rs.getString("rss_slug"), rs.getLong("blog_id"));
 		}

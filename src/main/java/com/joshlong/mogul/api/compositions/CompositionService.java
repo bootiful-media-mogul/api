@@ -34,6 +34,12 @@ public interface CompositionService {
 
 	void deleteCompositionAttachmentyId(Long id);
 
+	/**
+	 * the composition an attachment belongs to, or {@code null} if there's no such
+	 * attachment.
+	 */
+	Composition getCompositionByAttachmentId(Long attachmentId);
+
 	String createMarkdownPreviewForAttachment(Attachment attachment);
 
 }

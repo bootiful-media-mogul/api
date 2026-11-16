@@ -35,4 +35,10 @@ class PodcastPublishableResolver extends AbstractPublishableResolver<Episode> {
 		return publishable.title();
 	}
 
+	@Override
+	public Long mogulId(Episode publishable) {
+		var podcast = this.podcastService.getPodcastById(publishable.podcastId());
+		return podcast == null ? null : podcast.mogulId();
+	}
+
 }

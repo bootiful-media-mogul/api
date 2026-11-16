@@ -41,4 +41,10 @@ public interface PublishableResolver<T extends Publishable> extends DomainResolv
 	 */
 	String title(T publishable);
 
+	/**
+	 * the id of the mogul who owns this publishable, so that nobody can see or publish
+	 * someone else's things.
+	 */
+	Long mogulId(T publishable);
+
 }

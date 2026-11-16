@@ -49,4 +49,9 @@ class MogulStatusPublishableResolver extends AbstractPublishableResolver<MogulSt
 		return publishable.date().toString();
 	}
 
+	@Override
+	public Long mogulId(MogulStatus publishable) {
+		return publishable.mogulId();
+	}
+
 }

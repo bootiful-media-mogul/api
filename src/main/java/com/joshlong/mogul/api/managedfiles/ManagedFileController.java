@@ -37,6 +37,7 @@ class ManagedFileController {
 
 	@MutationMapping
 	boolean setManagedFileVisibility(@Argument Long managedFileId, @Argument Boolean visible) {
+		this.ownedManagedFile(managedFileId);
 		this.managedFileService.setManagedFileVisibility(managedFileId, visible);
 		return true;
 	}
@@ -58,7 +59,16 @@ class ManagedFileController {
 
 	@QueryMapping
 	ManagedFile managedFileById(@Argument Long managedFileId) {
-		return this.managedFileService.getManagedFileById(managedFileId);
+		return this.ownedManagedFile(managedFileId);
+	}
+
+	// ids are sequential, so they're easy to guess: check it's the signed-in mogul's
+	private ManagedFile ownedManagedFile(Long managedFileId) {
+		var mogulId = this.mogulService.getCurrentMogul().id();
+		var managedFile = managedFileId == null ? null : this.managedFileService.getManagedFileById(managedFileId);
+		Assert.state(managedFile != null && mogulId.equals(managedFile.mogulId()),
+				() -> "there is no managed file #" + managedFileId + " for mogul #" + mogulId);
+		return managedFile;
 	}
 
 	@ResponseBody

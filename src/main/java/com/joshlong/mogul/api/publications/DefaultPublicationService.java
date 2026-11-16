@@ -93,7 +93,13 @@ class DefaultPublicationService extends AbstractDomainService<Publishable, Publi
 	@Override
 	public <T extends Publishable> T resolvePublishable(Long mogulId, Long id, Class<T> clazz) {
 		this.mogulService.assertAuthorizedMogul(mogulId);
-		return findEntity(clazz, id);
+		var publishable = this.findEntity(clazz, id);
+		// only the mogul's own things can be seen or published
+		var owner = publishable == null ? null
+				: ((PublishableResolver<T>) this.findResolver(clazz)).mogulId(publishable);
+		Assert.state(owner != null && owner.equals(mogulId),
+				"there is no " + clazz.getSimpleName() + " [" + id + "] for mogul [" + mogulId + "]");
+		return publishable;
 	}
 
 	@Override

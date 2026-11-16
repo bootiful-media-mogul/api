@@ -21,7 +21,8 @@ class SegmentEntityContextBuilder implements EntityContextBuilder<Segment> {
 
 	@Override
 	public EntityContext buildContextFor(Long mogul, Long segmentId) {
-		var segment = this.podcastService.getPodcastEpisodeSegmentsByIds(List.of(segmentId)).iterator().next();
+		// asserts that the segment is the mogul's
+		var segment = this.podcastService.getPodcastEpisodeSegmentById(mogul, segmentId);
 		var episodes = this.podcastService.getAllPodcastEpisodesByIds(List.of(segment.episodeId()));
 		var episode = episodes.iterator().next();
 		return new EntityContext(TypeUtils.typeName(Segment.class),

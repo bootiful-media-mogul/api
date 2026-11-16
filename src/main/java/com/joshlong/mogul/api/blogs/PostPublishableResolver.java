@@ -34,4 +34,9 @@ class PostPublishableResolver extends AbstractPublishableResolver<Post> {
 		return publishable.title();
 	}
 
+	@Override
+	public Long mogulId(Post publishable) {
+		return publishable.mogulId();
+	}
+
 }

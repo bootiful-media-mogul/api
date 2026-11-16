@@ -54,6 +54,7 @@ class PodcastController {
 			DataFetchingEnvironment dataFetchingEnvironment) {
 		var graphic = isFieldRequested(dataFetchingEnvironment, "graphic");
 		var segments = isFieldRequested(dataFetchingEnvironment, "segments");
+		this.ownedPodcast(podcastId);
 		return this.podcastService.getPodcastEpisodesByPodcast(podcastId, graphic && segments);
 	}
 
@@ -63,12 +64,16 @@ class PodcastController {
 
 	@MutationMapping
 	boolean movePodcastEpisodeSegmentDown(@Argument Long podcastEpisodeId, @Argument Long podcastEpisodeSegmentId) {
+		this.ownedEpisode(podcastEpisodeId);
+		this.ownedSegment(podcastEpisodeSegmentId);
 		this.podcastService.movePodcastEpisodeSegmentDown(podcastEpisodeId, podcastEpisodeSegmentId);
 		return true;
 	}
 
 	@MutationMapping
 	boolean movePodcastEpisodeSegmentUp(@Argument Long podcastEpisodeId, @Argument Long podcastEpisodeSegmentId) {
+		this.ownedEpisode(podcastEpisodeId);
+		this.ownedSegment(podcastEpisodeSegmentId);
 		this.podcastService.movePodcastEpisodeSegmentUp(podcastEpisodeId, podcastEpisodeSegmentId);
 		return true;
 	}
@@ -81,6 +86,7 @@ class PodcastController {
 	@MutationMapping
 	boolean updatePodcastEpisode(@Argument Long podcastEpisodeId, @Argument String title, @Argument String description,
 			@Argument OffsetDateTime created) {
+		this.ownedEpisode(podcastEpisodeId);
 		this.podcastService.updatePodcastEpisodeDetails(podcastEpisodeId, title, description,
 				DateUtils.toDate(created));
 		return true;
@@ -88,7 +94,7 @@ class PodcastController {
 
 	@QueryMapping
 	Episode podcastEpisodeById(@Argument Long podcastEpisodeId) {
-		return this.podcastService.getPodcastEpisodeById(podcastEpisodeId);
+		return this.ownedEpisode(podcastEpisodeId);
 	}
 
 	@QueryMapping
@@ -162,6 +168,7 @@ class PodcastController {
 
 	@MutationMapping
 	Long createPodcastEpisodeSegment(@Argument Long podcastEpisodeId) {
+		this.ownedEpisode(podcastEpisodeId);
 		var mogul = this.mogulService.getCurrentMogul().id();
 		var segment = this.podcastService.createPodcastEpisodeSegment(mogul, podcastEpisodeId, "", 0);
 		return segment.id();
@@ -179,7 +186,7 @@ class PodcastController {
 
 	@QueryMapping
 	Podcast podcastById(@Argument Long podcastId) {
-		return this.podcastService.getPodcastById(podcastId);
+		return this.ownedPodcast(podcastId);
 	}
 
 	@QueryMapping
@@ -190,12 +197,14 @@ class PodcastController {
 
 	@MutationMapping
 	boolean deletePodcastEpisode(@Argument Long podcastEpisodeId) {
+		this.ownedEpisode(podcastEpisodeId);
 		this.podcastService.deletePodcastEpisode(podcastEpisodeId);
 		return true;
 	}
 
 	@MutationMapping
 	boolean deletePodcastEpisodeSegment(@Argument Long podcastEpisodeSegmentId) {
+		this.ownedSegment(podcastEpisodeSegmentId);
 		this.podcastService.deletePodcastEpisodeSegment(podcastEpisodeSegmentId);
 		return true;
 	}
@@ -260,8 +269,32 @@ class PodcastController {
 
 	@MutationMapping
 	boolean updatePodcast(@Argument Long podcastId, @Argument String title) {
+		this.ownedPodcast(podcastId);
 		this.podcastService.updatePodcast(podcastId, title);
 		return true;
+	}
+
+	// every operation that takes an id checks that it's the signed-in mogul's, before
+	// doing anything: ids are sequential, so they're easy to guess
+
+	private Podcast ownedPodcast(Long podcastId) {
+		var mogulId = this.mogulService.getCurrentMogul().id();
+		var podcast = podcastId == null ? null : this.podcastService.getPodcastById(podcastId);
+		Assert.state(podcast != null && mogulId.equals(podcast.mogulId()),
+				() -> "there is no podcast #" + podcastId + " for mogul #" + mogulId);
+		return podcast;
+	}
+
+	private Episode ownedEpisode(Long episodeId) {
+		var episode = episodeId == null ? null : this.podcastService.getPodcastEpisodeById(episodeId);
+		Assert.state(episode != null, () -> "there is no podcast episode #" + episodeId);
+		this.ownedPodcast(episode.podcastId());
+		return episode;
+	}
+
+	private void ownedSegment(Long segmentId) {
+		// asserts that the segment is the mogul's
+		this.podcastService.getPodcastEpisodeSegmentById(this.mogulService.getCurrentMogul().id(), segmentId);
 	}
 
 	@MutationMapping

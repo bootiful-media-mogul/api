@@ -98,6 +98,8 @@ class PublicationController<T extends Publishable> {
 
 	@QueryMapping
 	Collection<Publication> publicationsForPublishable(@Argument String type, @Argument Long id) {
+		// asserts that it's the signed-in mogul's
+		this.publicationService.resolvePublishable(this.mogulService.getCurrentMogul().id(), id, type);
 		return this.publicationService.getPublicationsByPublicationKeyAndClass(id, type);
 	}
 
@@ -166,6 +168,9 @@ class PublicationController<T extends Publishable> {
 		this.log.debug("going to unpublish the publication with id # {}", publicationId);
 		var publicationById = this.publicationService.getPublicationById(publicationId);
 		Assert.notNull(publicationById, "the publication should not be null");
+		var mogulId = this.mogulService.getCurrentMogul().id();
+		Assert.state(mogulId.equals(publicationById.mogulId()),
+				() -> "there is no publication #" + publicationId + " for mogul #" + mogulId);
 		var resolvedPlugin = this.plugins.get(publicationById.plugin());
 		Assert.notNull(resolvedPlugin, "you must specify an active plugin");
 		this.publicationService.unpublish(publicationById.mogulId(), publicationById, resolvedPlugin);

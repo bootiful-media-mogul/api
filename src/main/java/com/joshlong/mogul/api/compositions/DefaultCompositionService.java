@@ -168,6 +168,17 @@ class DefaultCompositionService implements CompositionService {
 	}
 
 	@Override
+	public Composition getCompositionByAttachmentId(Long attachmentId) {
+		return this.db //
+			.sql("select composition_id from composition_attachment where id = ?") //
+			.param(attachmentId) //
+			.query(Long.class) //
+			.optional() //
+			.map(this::getCompositionById) //
+			.orElse(null);
+	}
+
+	@Override
 	public void deleteCompositionAttachmentyId(Long id) {
 		// this is gross, but i need the composition_id for the caches
 		var compositionId = this.db //
