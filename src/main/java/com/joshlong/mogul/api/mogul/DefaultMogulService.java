@@ -18,12 +18,12 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
 import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 @Transactional
@@ -123,8 +123,9 @@ class DefaultMogulService implements MogulService {
 					.headers(httpHeaders -> httpHeaders.setBearerAuth(accessToken))//
 					.retrieve()//
 					.body(UserInfo.class);
-				mogul = this.login(Objects.requireNonNull(userinfo).sub(), aud, userinfo.email(), userinfo.givenName(),
-						userinfo.familyName());
+				Assert.notNull(userinfo, "auth0 had no userinfo for [" + username + "]");
+				mogul = this.login(userinfo.sub(), aud, userinfo.email(), userinfo.givenNameOrElse(username),
+						userinfo.familyNameOrNull());
 			}
 		}
 		this.nonNullMogul(mogul, username);
@@ -237,9 +238,42 @@ class DefaultMogulService implements MogulService {
 	}
 
 	// just for the first time login
-	private record UserInfo(String sub, @JsonProperty("username") String username,
-			@JsonProperty("given_name") String givenName, @JsonProperty("family_name") String familyName,
-			String nickname, String picture, String email) {
+	/**
+	 * what auth0's {@code /userinfo} says about a person. not every connection fills in
+	 * the same claims: a GitHub login has a {@code name} and a {@code nickname} but no
+	 * {@code given_name} or {@code family_name}, and often no {@code email}.
+	 */
+	record UserInfo(String sub, @JsonProperty("username") String username, @JsonProperty("given_name") String givenName,
+			@JsonProperty("family_name") String familyName, String name, String nickname, String picture,
+			String email) {
+
+		/**
+		 * a mogul has to have a given name: the {@code given_name}, or else the first
+		 * word of the {@code name}, or else the {@code nickname}, or else the fallback.
+		 */
+		String givenNameOrElse(String fallback) {
+			if (StringUtils.hasText(this.givenName))
+				return this.givenName.strip();
+			if (StringUtils.hasText(this.name))
+				return this.name.strip().split("\\s+", 2)[0];
+			if (StringUtils.hasText(this.nickname))
+				return this.nickname.strip();
+			return fallback;
+		}
+
+		/**
+		 * the {@code family_name}, or else whatever of the {@code name} comes after the
+		 * given name, when the given name came from it.
+		 */
+		String familyNameOrNull() {
+			if (StringUtils.hasText(this.familyName))
+				return this.familyName.strip();
+			if (!StringUtils.hasText(this.givenName) && StringUtils.hasText(this.name)) {
+				var parts = this.name.strip().split("\\s+", 2);
+				return parts.length == 2 ? parts[1] : null;
+			}
+			return null;
+		}
 
 	}
 
