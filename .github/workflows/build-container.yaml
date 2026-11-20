@@ -38,10 +38,10 @@ jobs:
 #          sudo swapon /swapfile
 #          free -h
 #          df -h /
-#
-#      - run: ./mvnw --batch-mode --no-transfer-progress -DskipTests -Pnative native:compile
-#        env:
-#          NATIVE_IMAGE_OPTIONS: -J-Xmx13g
+
+      - run: ./mvnw --batch-mode --no-transfer-progress -DskipTests -Pnative native:compile
+        env:
+          NATIVE_IMAGE_OPTIONS: -J-Xmx13g
 
       - uses: bootiful-media-mogul/github-actions-setup-container-build-env@main
         with:
