@@ -375,6 +375,30 @@ class SearchScopingTest {
 		Assertions.assertEquals("english", description.get("analyzer"), "made with the mapping the code declares");
 	}
 
+	@Test
+	void theRebuildReplacesAnIndexFromBeforeTheEnglishAnalyzer() throws Exception {
+		// production's index was made before the fields had the english analyzer, and
+		// elasticsearch won't change a field's analyzer, so rebuilding into it failed
+		// with
+		// "Cannot update parameter [analyzer] from [default] to [english]"
+		var index = this.elasticsearch.indexOps(IndexCoordinates.of(INDEX));
+		index.delete();
+		index.create();
+		index.putMapping(org.springframework.data.elasticsearch.core.document.Document.parse("""
+				{"properties": {"title": {"type": "text"}, "description": {"type": "text"},
+				 "className": {"type": "text"}, "searchableId": {"type": "long"}}}"""));
+		var word = this.word();
+		var noteId = this.createMogulNote(this.alice, this.aliceId, "rebuilt over the old index: " + word);
+
+		var context = Mockito.mock(JobExecutionContext.class);
+		Mockito.when(context.mogulId()).thenReturn(this.aliceId);
+		this.searchIndexJob.run(context);
+
+		Assertions.assertEquals(List.of(noteId), this.found(this.alice, word, "note"));
+		var description = (Map<?, ?>) ((Map<?, ?>) index.getMapping().get("properties")).get("description");
+		Assertions.assertEquals("english", description.get("analyzer"));
+	}
+
 	private List<Long> found(HttpGraphQlTester tester, String word, String type) {
 		var results = tester.document("query($q:String){ search(query:$q, metadata:{}){ searchableId type } }")
 			.variable("q", word)

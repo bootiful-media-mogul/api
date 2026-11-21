@@ -17,7 +17,9 @@ import org.springframework.data.elasticsearch.annotations.DateFormat;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
+import org.springframework.data.elasticsearch.UncategorizedElasticsearchException;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+import org.springframework.data.elasticsearch.core.IndexOperations;
 import org.springframework.data.elasticsearch.core.SearchHits;
 import org.springframework.data.elasticsearch.core.query.DeleteQuery;
 import org.springframework.data.elasticsearch.repository.ElasticsearchRepository;
@@ -40,9 +42,8 @@ class ElasticSearchService extends AbstractDomainService<Searchable, SearchableR
 
 	/**
 	 * elasticsearch won't change a field's mapping in place, so when the
-	 * {@link Document}'s fields change how they're analyzed, delete this index: the
-	 * search index job makes it again with the new mapping, and fills it for the mogul
-	 * who runs it.
+	 * {@link Document}'s fields change how they're analyzed, the search index job makes
+	 * this index again with the new mapping, and fills it for the mogul who runs it.
 	 */
 	static final String INDEX_NAME = "searchables";
 
@@ -210,16 +211,38 @@ class ElasticSearchService extends AbstractDomainService<Searchable, SearchableR
 			.toList();
 	}
 
+	/**
+	 * brings the index's mapping up to the {@link Document}'s, which works for new fields
+	 * but not for a changed one (a field's analyzer, say).
+	 * @return {@code false} if a field's mapping has changed, so it couldn't be
+	 */
+	private boolean updatedMapping(IndexOperations indexOps) {
+		try {
+			indexOps.putMapping();
+			return true;
+		} //
+		catch (UncategorizedElasticsearchException e) {
+			if (e.getMessage() != null && e.getMessage().contains("conflicts with existing mapper"))
+				return false;
+			throw e;
+		}
+	}
+
 	@Override
 	public int rebuild(Long mogulId) {
 		Assert.notNull(mogulId, "a rebuild is always for a mogul");
 		var indexOps = this.ops.indexOps(Document.class);
 		// the index's mapping, declared rather than guessed from the first document, so
 		// that mogulId is there to filter on from the start
-		if (indexOps.exists())
-			indexOps.putMapping();
-		else
+		if (!indexOps.exists())
 			indexOps.createWithMapping();
+		else if (!this.updatedMapping(indexOps)) {
+			// an index from before the mapping changed, which elasticsearch won't change
+			// in place: it's made again, and every mogul's rebuild fills it again
+			this.log.warn("the search index's mapping can't be brought up to date, so it's being made again");
+			indexOps.delete();
+			indexOps.createWithMapping();
+		}
 		// the mogul's entries, and any from before entries had owners: nobody can find
 		// those any more, and the rebuild writes the mogul's back
 		var stale = NativeQuery.builder()
