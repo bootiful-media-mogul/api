@@ -69,6 +69,18 @@ class SearchScopingTest {
 
 	private static final String INDEX = "searchables";
 
+	// the class the index is made from, which is package private to the service
+	private static final Class<?> SEARCHABLE_DOCUMENT = documentClass();
+
+	private static Class<?> documentClass() {
+		try {
+			return Class.forName("com.joshlong.mogul.api.search.elastic.Document");
+		} //
+		catch (ClassNotFoundException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
 	@Autowired
 	private WebApplicationContext context;
 
@@ -397,6 +409,15 @@ class SearchScopingTest {
 		Assertions.assertEquals(List.of(noteId), this.found(this.alice, word, "note"));
 		var description = (Map<?, ?>) ((Map<?, ?>) index.getMapping().get("properties")).get("description");
 		Assertions.assertEquals("english", description.get("analyzer"));
+	}
+
+	@Test
+	void theIndexLeavesShardsAndReplicasToTheServer() {
+		// elastic cloud serverless refuses "Settings [index.number_of_replicas,
+		// index.number_of_shards] are not available when running in serverless mode"
+		var settings = this.elasticsearch.indexOps(IndexCoordinates.of(INDEX)).createSettings(SEARCHABLE_DOCUMENT);
+		Assertions.assertFalse(settings.flatten().keySet().stream().anyMatch(k -> k.contains("number_of_")),
+				"the settings the index is made with: " + settings);
 	}
 
 	private List<Long> found(HttpGraphQlTester tester, String word, String type) {

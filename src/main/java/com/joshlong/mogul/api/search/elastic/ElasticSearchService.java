@@ -16,6 +16,7 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.elasticsearch.annotations.DateFormat;
 import org.springframework.data.elasticsearch.annotations.Field;
 import org.springframework.data.elasticsearch.annotations.FieldType;
+import org.springframework.data.elasticsearch.annotations.Setting;
 import org.springframework.data.elasticsearch.client.elc.NativeQuery;
 import org.springframework.data.elasticsearch.UncategorizedElasticsearchException;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
@@ -293,7 +294,11 @@ record RankedSearchableResult<T extends Searchable>(float rank, SearchableResult
  * an entry in the index. {@code id} is the type and the id ({@code note:5});
  * {@code mogulId} is the owner, which every search filters on.
  */
+// production is elastic cloud serverless, which refuses to make an index that asks for
+// shards or replicas, and spring data asks for both unless told to leave them to the
+// server
 @org.springframework.data.elasticsearch.annotations.Document(indexName = ElasticSearchService.INDEX_NAME)
+@Setting(useServerConfiguration = true)
 record Document(@Id String id, @Field(type = FieldType.Long) Long searchableId,
 		@Field(type = FieldType.Text, analyzer = "english") String title,
 		@Field(type = FieldType.Date, format = DateFormat.epoch_millis) Instant when,
