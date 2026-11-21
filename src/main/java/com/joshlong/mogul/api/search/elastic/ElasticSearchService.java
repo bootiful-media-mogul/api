@@ -39,13 +39,12 @@ interface DocumentRepository extends ElasticsearchRepository<Document, String> {
 class ElasticSearchService extends AbstractDomainService<Searchable, SearchableResolver<?>> implements SearchService {
 
 	/**
-	 * versioned, since elasticsearch won't change a field's mapping in place: when the
-	 * {@link Document}'s fields change how they're analyzed, the name changes, the app
-	 * makes the new index on startup, and the search index job fills it for each mogul. 2
-	 * is the first with the english analyzer; the one before it ({@code searchables}) can
-	 * be deleted.
+	 * elasticsearch won't change a field's mapping in place, so when the
+	 * {@link Document}'s fields change how they're analyzed, delete this index: the
+	 * search index job makes it again with the new mapping, and fills it for the mogul
+	 * who runs it.
 	 */
-	static final String INDEX_NAME = "searchables-2";
+	static final String INDEX_NAME = "searchables";
 
 	// how many searchables the rebuild loads and writes at a time
 	private static final int BATCH_SIZE = 100;
