@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.podcasts;
 
+import org.jspecify.annotations.Nullable;
 import com.joshlong.mogul.api.compositions.Composition;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 
@@ -69,6 +70,13 @@ public interface PodcastService {
 	Collection<Podcast> getAllPodcastsById(List<Long> mogulIds);
 
 	Collection<Episode> getPodcastEpisodesByPodcast(Long podcastId, boolean deep);
+
+	/**
+	 * the podcast's episodes whose titles have every word of {@code query} in them,
+	 * newest first, and at most {@code limit} of them, without their segments. a blank
+	 * query matches every episode, and a {@literal null} limit returns them all.
+	 */
+	Collection<Episode> findPodcastEpisodes(Long podcastId, @Nullable String query, @Nullable Integer limit);
 
 	Podcast createPodcast(Long mogulId, String title);
 

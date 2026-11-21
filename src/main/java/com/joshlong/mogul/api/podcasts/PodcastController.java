@@ -50,11 +50,14 @@ class PodcastController {
 	}
 
 	@QueryMapping
-	Collection<Episode> podcastEpisodesByPodcast(@Argument Long podcastId,
-			DataFetchingEnvironment dataFetchingEnvironment) {
+	Collection<Episode> podcastEpisodesByPodcast(@Argument Long podcastId, @Argument String query,
+			@Argument Integer limit, DataFetchingEnvironment dataFetchingEnvironment) {
 		var graphic = isFieldRequested(dataFetchingEnvironment, "graphic");
 		var segments = isFieldRequested(dataFetchingEnvironment, "segments");
 		this.ownedPodcast(podcastId);
+		// the clip apps' pickers: a page of titles, never the segments
+		if (query != null || limit != null)
+			return this.podcastService.findPodcastEpisodes(podcastId, query, limit);
 		return this.podcastService.getPodcastEpisodesByPodcast(podcastId, graphic && segments);
 	}
 

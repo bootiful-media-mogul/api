@@ -1,6 +1,7 @@
 package com.joshlong.mogul.api.notes;
 
 import com.joshlong.mogul.api.mogul.MogulService;
+import com.joshlong.mogul.api.podcasts.PodcastService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +45,9 @@ class NotesGraphQlTest {
 
 	@Autowired
 	private JdbcClient db;
+
+	@Autowired
+	private PodcastService podcastService;
 
 	@Autowired
 	private TransactionTemplate transactionTemplate;
@@ -108,17 +112,24 @@ class NotesGraphQlTest {
 
 	@Test
 	void aClipOnAnEpisodeIsFoundByItsUrl() {
-		var episodeId = this.ownerId("""
-				select e.id from podcast_episode e join podcast p on p.id = e.podcast_id
-				where p.mogul_id = ? order by e.id limit 1""");
-		var url = "https://example.com/" + java.util.UUID.randomUUID();
-		var noteId = this.createNote(this.owner, "episode", episodeId, url);
+		// the local database may have no episodes, so the test brings its own
+		var podcastId = this.ownerId("select p.id from podcast p where p.mogul_id = ? order by p.id limit 1");
+		var episodeId = this.podcastService
+			.createPodcastEpisodeDraft(this.ownerId, podcastId, "notes-graphql-test episode", "")
+			.id();
+		try {
+			var url = "https://example.com/" + java.util.UUID.randomUUID();
+			var noteId = this.createNote(this.owner, "episode", episodeId, url);
 
-		var found = this.notesForUrl(this.owner, url);
-		Assertions.assertEquals(1, found.size());
-		Assertions.assertEquals(noteId, ((Number) found.getFirst().get("id")).longValue());
-		Assertions.assertEquals("episode", found.getFirst().get("type"));
-		Assertions.assertEquals(episodeId, ((Number) found.getFirst().get("notableId")).longValue());
+			var found = this.notesForUrl(this.owner, url);
+			Assertions.assertEquals(1, found.size());
+			Assertions.assertEquals(noteId, ((Number) found.getFirst().get("id")).longValue());
+			Assertions.assertEquals("episode", found.getFirst().get("type"));
+			Assertions.assertEquals(episodeId, ((Number) found.getFirst().get("notableId")).longValue());
+		}
+		finally {
+			this.podcastService.deletePodcastEpisode(episodeId);
+		}
 	}
 
 	@Test

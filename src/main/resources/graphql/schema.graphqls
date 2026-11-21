@@ -389,7 +389,9 @@ type Query {
     # blogs
     blogById(blogId: Int) : Blog
     blogs: [Blog]
-    blogPostsByBlog (blogId: Int) : [Post]
+    # every post, or with query and/or limit, the newest whose titles have every word of
+    # the query in them (any order, any case): the clip apps' post picker
+    blogPostsByBlog (blogId: Int, query: String, limit: Int) : [Post]
     postById(postId: Int) : Post
 
 
@@ -446,7 +448,9 @@ type Query {
     podcasts: [Podcast]
     podcastEpisodeById(podcastEpisodeId:Int):Episode
     podcastEpisodeSegmentById(podcastEpisodeSegmentId:Int):Segment
-    podcastEpisodesByPodcast(podcastId:Int):[Episode]
+    # every episode, or with query and/or limit, the newest whose titles have every word
+    # of the query in them (any order, any case), without segments: the clip apps' picker
+    podcastEpisodesByPodcast(podcastId:Int, query: String, limit: Int):[Episode]
 
     # managedFiles
     managedFileById( managedFileId: Int) : ManagedFile

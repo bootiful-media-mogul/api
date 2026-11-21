@@ -3,6 +3,8 @@ package com.joshlong.mogul.api.blogs;
 import com.joshlong.mogul.api.compositions.Composition;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 
+import org.jspecify.annotations.Nullable;
+
 import java.util.Collection;
 import java.util.Date;
 import java.util.Map;
@@ -16,6 +18,13 @@ public interface BlogService {
 	Collection<Post> getPostsForBlog(long blogId);
 
 	Collection<Post> getVisiblePostsForBlog(long blogId);
+
+	/**
+	 * the blog's posts whose titles have every word of {@code query} in them, newest
+	 * first, and at most {@code limit} of them. a blank query matches every post, and a
+	 * {@literal null} limit returns them all.
+	 */
+	Collection<Post> findPostsForBlog(long blogId, @Nullable String query, @Nullable Integer limit);
 
 	void deletePost(Long postId);
 

@@ -1,12 +1,14 @@
 package com.joshlong.mogul.api.blogs;
 
 import com.joshlong.mogul.api.SearchableDeletedEvent;
+import com.joshlong.mogul.api.TitleSearch;
 import com.joshlong.mogul.api.ai.AiClient;
 import com.joshlong.mogul.api.compositions.Composition;
 import com.joshlong.mogul.api.compositions.CompositionService;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 import com.joshlong.mogul.api.mogul.MogulCreatedEvent;
 import com.joshlong.mogul.utils.JdbcUtils;
+import org.jspecify.annotations.Nullable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.RowMapper;
@@ -111,6 +113,24 @@ class DefaultBlogService implements BlogService {
 	@Override
 	public Collection<Post> getVisiblePostsForBlog(long blogId) {
 		return this.postsForBlog(blogId, true);
+	}
+
+	@Override
+	public Collection<Post> findPostsForBlog(long blogId, @Nullable String query, @Nullable Integer limit) {
+		var search = TitleSearch.of("bp.title", query);
+		var params = new ArrayList<Object>();
+		params.add(blogId);
+		params.addAll(search.params());
+		var sql = POST_SELECT + " where bp.blog_id = ? " + search.sql() + " order by bp.created desc, bp.id desc ";
+		if (limit != null) {
+			sql += " limit ? ";
+			params.add(limit);
+		}
+		return this.db //
+			.sql(sql) //
+			.params(params) //
+			.query(this.postRowMapper) //
+			.list();
 	}
 
 	private Collection<Post> postsForBlog(long blogId, boolean visibleOnly) {
