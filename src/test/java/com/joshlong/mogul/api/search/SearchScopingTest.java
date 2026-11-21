@@ -67,7 +67,10 @@ class SearchScopingTest {
 
 	private static final String BOB = "search-scoping-test|bob";
 
-	private static final String INDEX = "searchables";
+	private static final String INDEX = "searchables-2";
+
+	// the index from before the fields had the english analyzer, still in production
+	private static final String LEGACY_INDEX = "searchables";
 
 	@Autowired
 	private WebApplicationContext context;
@@ -353,6 +356,31 @@ class SearchScopingTest {
 
 		Assertions.assertEquals(List.of(noteId), this.found(this.alice, word, "note"), "alice's note is back");
 		Assertions.assertEquals(1, this.entriesMentioning(word), "and the ownerless entry is gone");
+	}
+
+	@Test
+	void theRebuildWorksWhereAnIndexFromBeforeTheEnglishAnalyzerIsLeftOver() throws Exception {
+		// production's index was made before the fields had the english analyzer, and
+		// elasticsearch won't change a field's analyzer, so rebuilding into it failed
+		var legacy = IndexCoordinates.of(LEGACY_INDEX);
+		var legacyOps = this.elasticsearch.indexOps(legacy);
+		if (legacyOps.exists())
+			legacyOps.delete();
+		legacyOps.create();
+		legacyOps.putMapping(org.springframework.data.elasticsearch.core.document.Document.parse("""
+				{"properties": {"title": {"type": "text"}, "description": {"type": "text"},
+				 "className": {"type": "text"}, "searchableId": {"type": "long"}}}"""));
+		try {
+			var word = this.word();
+			var noteId = this.createMogulNote(this.alice, this.aliceId, "rebuilt beside the old index: " + word);
+			var context = Mockito.mock(JobExecutionContext.class);
+			Mockito.when(context.mogulId()).thenReturn(this.aliceId);
+			this.searchIndexJob.run(context);
+			Assertions.assertEquals(List.of(noteId), this.found(this.alice, word, "note"));
+		} //
+		finally {
+			legacyOps.delete();
+		}
 	}
 
 	private List<Long> found(HttpGraphQlTester tester, String word, String type) {
