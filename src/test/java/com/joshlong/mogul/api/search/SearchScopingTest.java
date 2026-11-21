@@ -4,6 +4,7 @@ import com.joshlong.mogul.api.blogs.BlogService;
 import com.joshlong.mogul.api.jobs.JobExecutionContext;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.notes.NoteService;
+import com.joshlong.mogul.api.podcasts.PodcastService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -82,6 +83,9 @@ class SearchScopingTest {
 
 	@Autowired
 	private SearchService searchService;
+
+	@Autowired
+	private PodcastService podcastService;
 
 	@Autowired
 	private SearchIndexJob searchIndexJob;
@@ -191,6 +195,90 @@ class SearchScopingTest {
 			if (used == 0)
 				return id;
 		}
+	}
+
+	@Test
+	void aPickerSearchesOneBlogsPostsAndNothingElse() {
+		var word = this.word();
+		var blogId = this.createBlog(this.alice, "alice's picked blog");
+		var otherBlogId = this.createBlog(this.alice, "alice's unpicked blog");
+		var postId = this.createPost(this.alice, blogId, "a post about " + word);
+		this.createPost(this.alice, otherBlogId, "another post about " + word);
+		this.createNote(this.alice, "post", postId, "a note about " + word);
+
+		var onlyThisBlog = Map.<String, Object>of("type", "post", "blogId", blogId);
+		await().atMost(Duration.ofSeconds(30))
+			.untilAsserted(() -> Assertions.assertEquals(List.of(postId), this.picked(this.alice, word, onlyThisBlog),
+					"the post in that blog, and not the other blog's, nor the note on it"));
+		Assertions.assertEquals(List.of(), this.picked(this.bob, word, onlyThisBlog),
+				"naming alice's blog doesn't get bob her posts");
+	}
+
+	@Test
+	void aPickerSearchesOnePodcastsEpisodes() {
+		var word = this.word();
+		var podcastId = this.createPodcast(this.alice, "alice's picked podcast");
+		var otherPodcastId = this.createPodcast(this.alice, "alice's unpicked podcast");
+		var episodeId = this.createEpisodeWithASegment(this.alice, podcastId, "an episode about " + word);
+		this.createEpisodeWithASegment(this.alice, otherPodcastId, "another episode about " + word);
+
+		await().atMost(Duration.ofSeconds(30))
+			.untilAsserted(() -> Assertions.assertEquals(List.of(episodeId),
+					this.picked(this.alice, word, Map.of("type", "segment", "podcastId", podcastId)),
+					"an episode is found by its segments, once per episode, in that podcast only"));
+	}
+
+	// what a clip app's picker gets back: the aggregate ids, the posts' or episodes' own
+	private List<Long> picked(HttpGraphQlTester tester, String word, Map<String, Object> metadata) {
+		var results = tester.document("query($q:String,$m:JSON){ search(query:$q, metadata:$m){ aggregateId } }")
+			.variable("q", word)
+			.variable("m", metadata)
+			.execute()
+			.path("search")
+			.entityList(Map.class)
+			.get();
+		return results.stream().map(r -> ((Number) r.get("aggregateId")).longValue()).sorted().toList();
+	}
+
+	private long createBlog(HttpGraphQlTester tester, String title) {
+		return this.id(tester.document("mutation($t:String){ createBlog(title:$t, description:\"d\"){ id } }")
+			.variable("t", title)
+			.execute()
+			.path("createBlog.id"));
+	}
+
+	private long createPost(HttpGraphQlTester tester, long blogId, String title) {
+		return this.id(tester.document(
+				"mutation($id:Int,$t:String){ createPost(blogId:$id, title:$t, content:\"c\", summary:\"s\", rssSlug:\"r\"){ id } }")
+			.variable("id", blogId)
+			.variable("t", title)
+			.execute()
+			.path("createPost.id"));
+	}
+
+	private long createPodcast(HttpGraphQlTester tester, String title) {
+		return this.id(tester.document("mutation($t:String){ createPodcast(title:$t){ id } }")
+			.variable("t", title)
+			.execute()
+			.path("createPodcast.id"));
+	}
+
+	// segments are indexed once they're transcribed; here, straight away
+	private long createEpisodeWithASegment(HttpGraphQlTester tester, long podcastId, String title) {
+		var episodeId = this.id(tester.document(
+				"mutation($id:Int,$t:String){ createPodcastEpisodeDraft(podcastId:$id, title:$t, description:\"d\"){ id } }")
+			.variable("id", podcastId)
+			.variable("t", title)
+			.execute()
+			.path("createPodcastEpisodeDraft.id"));
+		var segmentId = this
+			.id(tester.document("mutation($id:Int){ createPodcastEpisodeSegment(podcastEpisodeId:$id) }")
+				.variable("id", episodeId)
+				.execute()
+				.path("createPodcastEpisodeSegment"));
+		this.searchService
+			.index(this.podcastService.getPodcastEpisodeSegmentsByIds(List.of(segmentId)).iterator().next());
+		return episodeId;
 	}
 
 	@Test

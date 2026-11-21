@@ -72,11 +72,10 @@ public interface PodcastService {
 	Collection<Episode> getPodcastEpisodesByPodcast(Long podcastId, boolean deep);
 
 	/**
-	 * the podcast's episodes whose titles have every word of {@code query} in them,
-	 * newest first, and at most {@code limit} of them, without their segments. a blank
-	 * query matches every episode, and a {@literal null} limit returns them all.
+	 * the podcast's newest episodes, without their segments: at most {@code limit} of
+	 * them, or all of them for a {@literal null} limit.
 	 */
-	Collection<Episode> findPodcastEpisodes(Long podcastId, @Nullable String query, @Nullable Integer limit);
+	Collection<Episode> getNewestPodcastEpisodes(Long podcastId, @Nullable Integer limit);
 
 	Podcast createPodcast(Long mogulId, String title);
 

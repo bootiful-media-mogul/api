@@ -114,6 +114,8 @@ class ElasticSearchService extends AbstractDomainService<Searchable, SearchableR
 			Map<String, Object> metadata) {
 		Assert.notNull(mogulId, "searches are always for a mogul");
 		this.log.info("searching for [{}] for mogul {} with metadata {}", shouldContain, mogulId, metadata);
+		var scope = metadata == null ? Map.<String, Object>of() : metadata;
+		var type = scope.get("type") == null ? null : this.classForType(scope.get("type").toString());
 		var nativeQuery = NativeQuery.builder() //
 			.withQuery(q -> q //
 				.bool(b -> {
@@ -121,6 +123,10 @@ class ElasticSearchService extends AbstractDomainService<Searchable, SearchableR
 					// and
 					// it doesn't change how the matches are ranked
 					b.filter(f -> f.term(t -> t.field("mogulId").value(mogulId)));
+					// only one kind of thing, if the metadata says so: also a filter, so
+					// the hits aren't spent on other kinds
+					if (type != null)
+						b.filter(f -> f.matchPhrase(m -> m.field("className").query(type.getName())));
 					b.must(m -> m.multiMatch(
 							mm -> mm.query(shouldContain).fields("title^2", "description^2").fuzziness("AUTO")));
 					// should match (boosts relevance if present)
@@ -132,7 +138,23 @@ class ElasticSearchService extends AbstractDomainService<Searchable, SearchableR
 			.withMaxResults(1000) //
 			.build();
 		var hits = this.ops.search(nativeQuery, Document.class);
-		return this.resultsFor(mogulId, hits).stream().map(r -> (SearchableResult<T>) r).toList();
+		return this.resultsFor(mogulId, hits)
+			.stream()
+			.filter(r -> this.within(r, scope))
+			.map(r -> (SearchableResult<T>) r)
+			.toList();
+	}
+
+	/**
+	 * whether a result is within what the search's metadata asks for: every entry of the
+	 * metadata must be in the result's context, as with {@code {"type": "post", "blogId":
+	 * 7}} for one blog's posts. numbers from json and from java compare by their text.
+	 */
+	private boolean within(SearchableResult<?> result, Map<String, Object> metadata) {
+		for (var entry : metadata.entrySet())
+			if (!String.valueOf(entry.getValue()).equals(String.valueOf(result.context().get(entry.getKey()))))
+				return false;
+		return true;
 	}
 
 	private record Entry(Class<? extends Searchable> type, long searchableId) {

@@ -1,7 +1,6 @@
 package com.joshlong.mogul.api.blogs;
 
 import com.joshlong.mogul.api.SearchableDeletedEvent;
-import com.joshlong.mogul.api.TitleSearch;
 import com.joshlong.mogul.api.ai.AiClient;
 import com.joshlong.mogul.api.compositions.Composition;
 import com.joshlong.mogul.api.compositions.CompositionService;
@@ -116,12 +115,10 @@ class DefaultBlogService implements BlogService {
 	}
 
 	@Override
-	public Collection<Post> findPostsForBlog(long blogId, @Nullable String query, @Nullable Integer limit) {
-		var search = TitleSearch.of("bp.title", query);
+	public Collection<Post> getNewestPostsForBlog(long blogId, @Nullable Integer limit) {
 		var params = new ArrayList<Object>();
 		params.add(blogId);
-		params.addAll(search.params());
-		var sql = POST_SELECT + " where bp.blog_id = ? " + search.sql() + " order by bp.created desc, bp.id desc ";
+		var sql = POST_SELECT + " where bp.blog_id = ? order by bp.created desc, bp.id desc ";
 		if (limit != null) {
 			sql += " limit ? ";
 			params.add(limit);

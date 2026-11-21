@@ -72,9 +72,9 @@ class BlogController {
 	}
 
 	@QueryMapping
-	Collection<Post> blogPostsByBlog(@Argument Long blogId, @Argument String query, @Argument Integer limit) {
+	Collection<Post> blogPostsByBlog(@Argument Long blogId, @Argument Integer limit) {
 		this.ownedBlog(blogId);
-		return this.service.findPostsForBlog(blogId, query, limit);
+		return this.service.getNewestPostsForBlog(blogId, limit);
 	}
 
 	@MutationMapping

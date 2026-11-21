@@ -80,7 +80,8 @@ class SegmentSearchableResolver extends AbstractSearchableResolver<Segment> {
 	private SearchableResult<Segment> buildResultFor(Segment segment, Episode episode, String transcript,
 			Long mogulId) {
 		return new SearchableResult<>(segment.searchableId(), segment, episode.title(), transcript, episode.id(),
-				episode.created(), this.type, mogulId);
+				episode.created(), this.type, mogulId,
+				Map.of("episodeId", episode.id(), "podcastId", episode.podcastId()));
 	}
 
 }

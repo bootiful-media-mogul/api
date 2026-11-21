@@ -389,9 +389,9 @@ type Query {
     # blogs
     blogById(blogId: Int) : Blog
     blogs: [Blog]
-    # every post, or with query and/or limit, the newest whose titles have every word of
-    # the query in them (any order, any case): the clip apps' post picker
-    blogPostsByBlog (blogId: Int, query: String, limit: Int) : [Post]
+    # every post, or with a limit, that many of the newest: the clip apps' post picker,
+    # which finds older ones with search(query, metadata: {type: "post", blogId: ...})
+    blogPostsByBlog (blogId: Int, limit: Int) : [Post]
     postById(postId: Int) : Post
 
 
@@ -403,6 +403,8 @@ type Query {
     jobs : [Job]
 
     # search
+    # the mogul's things that match, best first. metadata narrows them: every entry must be
+    # in a result's context, e.g. {type: "post", blogId: 7} for one blog's posts
     search(query: String, metadata: JSON): [SearchableResult]
 
     ayrsharePublicationCompositions: [AyrsharePublicationComposition]
@@ -448,9 +450,10 @@ type Query {
     podcasts: [Podcast]
     podcastEpisodeById(podcastEpisodeId:Int):Episode
     podcastEpisodeSegmentById(podcastEpisodeSegmentId:Int):Segment
-    # every episode, or with query and/or limit, the newest whose titles have every word
-    # of the query in them (any order, any case), without segments: the clip apps' picker
-    podcastEpisodesByPodcast(podcastId:Int, query: String, limit: Int):[Episode]
+    # every episode, or with a limit, that many of the newest, without segments: the clip
+    # apps' picker, which finds older ones with search(query, metadata: {type: "segment",
+    # podcastId: ...})
+    podcastEpisodesByPodcast(podcastId:Int, limit: Int):[Episode]
 
     # managedFiles
     managedFileById( managedFileId: Int) : ManagedFile

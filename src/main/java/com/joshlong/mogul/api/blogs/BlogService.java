@@ -20,11 +20,10 @@ public interface BlogService {
 	Collection<Post> getVisiblePostsForBlog(long blogId);
 
 	/**
-	 * the blog's posts whose titles have every word of {@code query} in them, newest
-	 * first, and at most {@code limit} of them. a blank query matches every post, and a
-	 * {@literal null} limit returns them all.
+	 * the blog's newest posts, at most {@code limit} of them, or all of them for a
+	 * {@literal null} limit.
 	 */
-	Collection<Post> findPostsForBlog(long blogId, @Nullable String query, @Nullable Integer limit);
+	Collection<Post> getNewestPostsForBlog(long blogId, @Nullable Integer limit);
 
 	void deletePost(Long postId);
 

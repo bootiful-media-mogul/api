@@ -1,7 +1,6 @@
 package com.joshlong.mogul.api.podcasts;
 
 import org.jspecify.annotations.Nullable;
-import com.joshlong.mogul.api.TitleSearch;
 import com.joshlong.mogul.api.SearchableDeletedEvent;
 import com.joshlong.mogul.api.cleanvoice.AudioCleanedEvent;
 import com.joshlong.mogul.api.cleanvoice.AudioCleaning;
@@ -587,13 +586,10 @@ class DefaultPodcastService implements PodcastService {
 	}
 
 	@Override
-	public Collection<Episode> findPodcastEpisodes(Long podcastId, @Nullable String query, @Nullable Integer limit) {
-		var search = TitleSearch.of("pe.title", query);
+	public Collection<Episode> getNewestPodcastEpisodes(Long podcastId, @Nullable Integer limit) {
 		var params = new ArrayList<Object>();
 		params.add(podcastId);
-		params.addAll(search.params());
-		var sql = " select * from podcast_episode pe where pe.podcast_id = ? " + search.sql()
-				+ " order by pe.created desc, pe.id desc ";
+		var sql = " select * from podcast_episode pe where pe.podcast_id = ? order by pe.created desc, pe.id desc ";
 		if (limit != null) {
 			sql += " limit ? ";
 			params.add(limit);

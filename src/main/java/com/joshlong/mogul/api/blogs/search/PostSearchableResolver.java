@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 @Component
 class PostSearchableResolver extends AbstractSearchableResolver<Post> {
@@ -39,7 +40,7 @@ class PostSearchableResolver extends AbstractSearchableResolver<Post> {
 
 	private SearchableResult<Post> buildResultFor(Post post, String transcript) {
 		return new SearchableResult<>(post.searchableId(), post, post.title(), transcript, post.id(), post.created(),
-				this.type, post.mogulId());
+				this.type, post.mogulId(), Map.of("blogId", post.blogId()));
 	}
 
 	@Override
