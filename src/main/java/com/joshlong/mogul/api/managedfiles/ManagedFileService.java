@@ -27,6 +27,11 @@ public interface ManagedFileService {
 
 	Resource read(Long managedFileId);
 
+	/**
+	 * the bytes from {@code start} to {@code end}, both inclusive, as an HTTP range is
+	 */
+	Resource read(Long managedFileId, long start, long end);
+
 	void write(Long managedFileId, String filename, MediaType mts, Resource resource);
 
 	/**

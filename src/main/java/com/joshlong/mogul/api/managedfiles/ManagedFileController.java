@@ -8,6 +8,8 @@ import org.springframework.graphql.data.method.annotation.Argument;
 import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.graphql.data.method.annotation.SchemaMapping;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -73,17 +75,19 @@ class ManagedFileController {
 
 	@ResponseBody
 	@GetMapping(PUBLIC_MF_URL)
-	ResponseEntity<Resource> readPublic(@PathVariable Long id) {
-		return this.doRead(true, id);
+	ResponseEntity<Resource> readPublic(@PathVariable Long id,
+			@RequestHeader(value = HttpHeaders.RANGE, required = false) String range) {
+		return this.doRead(true, id, range);
 	}
 
 	@ResponseBody
 	@GetMapping(MF_RW_URL)
-	ResponseEntity<Resource> read(@PathVariable Long id) {
-		return this.doRead(false, id);
+	ResponseEntity<Resource> read(@PathVariable Long id,
+			@RequestHeader(value = HttpHeaders.RANGE, required = false) String range) {
+		return this.doRead(false, id, range);
 	}
 
-	private ResponseEntity<Resource> doRead(boolean assertVisible, Long managedFileId) {
+	private ResponseEntity<Resource> doRead(boolean assertVisible, Long managedFileId, String rangeHeader) {
 		Assert.notNull(managedFileId, "the managedFileId is null");
 		var managedFile = this.managedFileService.getManagedFileById(managedFileId);
 		Assert.notNull(managedFile, "the managed file does not exist [" + managedFileId + "]");
@@ -102,13 +106,28 @@ class ManagedFileController {
 					this.mogulService.getCurrentMogul().id(), managedFile.id(), managedFile.mogulId());
 			return ResponseEntity.notFound().build();
 		}
-		var read = this.managedFileService.read(managedFileId);
 		var contentType = managedFile.contentType();
 		this.log.debug("content-type: {}", contentType);
-		return ResponseEntity.ok()
-			.contentLength(managedFile.size())
+		var size = managedFile.size();
+		var range = ByteRange.of(rangeHeader, size);
+		if (range == null) {
+			return ResponseEntity.ok()
+				.header(HttpHeaders.ACCEPT_RANGES, "bytes")
+				.contentLength(size)
+				.contentType(MediaType.parseMediaType(contentType))
+				.body(this.managedFileService.read(managedFileId));
+		}
+		if (range == ByteRange.UNSATISFIABLE) {
+			return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+				.header(HttpHeaders.CONTENT_RANGE, "bytes */" + size)
+				.build();
+		}
+		return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+			.header(HttpHeaders.ACCEPT_RANGES, "bytes")
+			.header(HttpHeaders.CONTENT_RANGE, range.contentRange())
+			.contentLength(range.length())
 			.contentType(MediaType.parseMediaType(contentType))
-			.body(read);
+			.body(this.managedFileService.read(managedFileId, range.start(), range.end()));
 	}
 
 	@ResponseBody

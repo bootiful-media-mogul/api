@@ -286,6 +286,12 @@ class DefaultManagedFileService implements ManagedFileService {
 		return this.storage.read(bucket, fn);
 	}
 
+	@Override
+	public Resource read(Long managedFileId, long start, long end) {
+		var mf = this.getManagedFileById(managedFileId);
+		return this.storage.read(mf.bucket(), this.fqn(mf.folder(), mf.storageFilename()), start, end);
+	}
+
 	/**
 	 * the identifier for the bytes we just wrote, which is what lets work keyed to this
 	 * file tell whether it has already been done. worth one HEAD: the alternative is
