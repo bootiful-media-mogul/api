@@ -11,6 +11,7 @@ import org.springframework.graphql.data.method.annotation.MutationMapping;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.Assert;
+import org.springframework.util.StringUtils;
 
 import java.net.URI;
 import java.time.OffsetDateTime;
@@ -25,10 +26,27 @@ class NotesController {
 
 	private final ApplicationEventPublisher publisher;
 
-	NotesController(MogulService mogulService, NoteService noteService, ApplicationEventPublisher publisher) {
+	private final NoteSummaries noteSummaries;
+
+	private final NoteSummarizer noteSummarizer;
+
+	NotesController(MogulService mogulService, NoteService noteService, ApplicationEventPublisher publisher,
+			NoteSummaries noteSummaries, NoteSummarizer noteSummarizer) {
 		this.mogulService = mogulService;
 		this.noteService = noteService;
 		this.publisher = publisher;
+		this.noteSummaries = noteSummaries;
+		this.noteSummarizer = noteSummarizer;
+	}
+
+	/**
+	 * a title for a note with this text. the note editor asks for one when a summary has
+	 * filled in a note that has no title.
+	 */
+	@QueryMapping
+	String noteTitle(@Argument String description) {
+		this.mogulService.getCurrentMogul();
+		return StringUtils.hasText(description) ? this.noteSummarizer.title(description) : null;
 	}
 
 	@MutationMapping
@@ -55,20 +73,38 @@ class NotesController {
 		return this.noteService.update(mogul.id(), id, notable, newUrl, newTitle, note) != null;
 	}
 
+	/**
+	 * asks for a summary of the page at the url, for the note editor. it arrives later as
+	 * a {@code page-summarized-event} notification keyed by what this returns.
+	 */
+	@MutationMapping
+	String summarizePage(@Argument String url) {
+		var mogul = this.mogulService.getCurrentMogul();
+		var parsed = NoteUrls.parse(url);
+		Assert.notNull(parsed, "there's no url to summarize");
+		return this.noteSummaries.summarizePage(mogul.id(), parsed);
+	}
+
 	@MutationMapping
 	boolean setNoteDone(@Argument Long id, @Argument Boolean done) {
 		var currentMogul = this.mogulService.getCurrentMogul();
 		return this.noteService.setDone(currentMogul.id(), id, Boolean.TRUE.equals(done)) != null;
 	}
 
+	/**
+	 * @param summarize whether a note with a url and no text -- a clip -- should have a
+	 * summary of the page written into it. leaving it out means yes, which is what the
+	 * clippers want; the studio says no, and summarizes in its editor when asked to.
+	 */
 	@MutationMapping
 	boolean createNote(@Argument String type, @Argument Long id, @Argument String note, @Argument String url,
-			@Argument String title) {
+			@Argument String title, @Argument Boolean summarize) {
 		var mogul = this.mogulService.getCurrentMogul();
 		var parsedUrl = NoteUrls.parse(url);
 		var payload = this.noteService.resolveNotable(mogul.id(), id, type);
 		var newNote = this.noteService.create(mogul.id(), payload, parsedUrl, title, note);
-
+		if (newNote != null && !Boolean.FALSE.equals(summarize))
+			this.noteSummaries.created(newNote);
 		return newNote != null;
 	}
 

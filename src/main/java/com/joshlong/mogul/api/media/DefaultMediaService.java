@@ -185,11 +185,11 @@ class DefaultMediaService implements MediaService {
 	@ApplicationModuleListener
 	void onProcessorCompleted(ProcessorCompletedEvent event) {
 		Assert.notNull(event, "the ProcessorCompletedEvent must not be null");
-		if (this.processorHandlers.containsKey(event.processorId()))
-			this.processorHandlers.get(event.processorId()).accept(event);
-		else {
-			this.log.warn("no handler for ProcessorCompletedEvent with processorId {}", event.processorId());
-		}
+		// every reply comes through here, and the ones for transcripts and notes are
+		// handled in those modules
+		var handler = this.processorHandlers.get(event.processorId());
+		if (handler != null)
+			handler.accept(event);
 	}
 
 	private void normalized(ProcessorCompletedEvent event) {

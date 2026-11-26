@@ -324,12 +324,16 @@ type Mutation {
     summarize(content:String): String
 
     # notes
-    createNote(type:String, id:Int, note:String, url:String, title:String): Boolean
+    # a note with a url and no text gets a summary of the page written into it, unless summarize is false
+    createNote(type:String, id:Int, note:String, url:String, title:String, summarize:Boolean): Boolean
     deleteNote(id:Int) : Boolean
     # leave url or title out to keep the note's current value, or pass null to clear it.
     # give notableType and notableId to move the note there
     updateNote(id:Int, note:String, url:String, title:String, notableType:String, notableId:Int): Boolean
     setNoteDone(id:Int, done:Boolean): Boolean
+    # reads the page at the url and summarizes it, for the note editor. the summary comes later, in a
+    # page-summarized-event notification whose key is what this returns
+    summarizePage(url:String): String
 
 
     # jobs
@@ -419,6 +423,8 @@ type Query {
     notesForNotable(type:String, id:Int, includeDone:Boolean): [Note]
     # the current mogul's notes for exactly this url, wherever they're attached, newest first
     notesForUrl(url:String): [Note]
+    # a title for a note with this text, written by the model
+    noteTitle(description:String): String
 
     # publicationService
     publicationsForPublishable( type : String, id: Int ) : [Publication]

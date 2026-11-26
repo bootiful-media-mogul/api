@@ -218,6 +218,43 @@ class DefaultNoteService extends AbstractDomainService<Notable, NotableResolver<
 		return noteUpdated;
 	}
 
+	@Override
+	public Note appendSummary(Long mogulId, Long noteId, String textHash, String summary) {
+		Assert.hasText(summary, "the summary must have text");
+		Assert.hasText(textHash, "the hash of the note's text is required");
+		var updated = this.db.sql("""
+				update note
+				set note = case
+				    when btrim(note, E' \\t\\r\\n') = '' then ?
+				    else rtrim(note, E' \\t\\r\\n') || E'\\n\\n' || ?
+				end
+				where id = ? and mogul_id = ? and md5(note) = ?
+				""") //
+			.params(summary, summary, noteId, mogulId, textHash) //
+			.update();
+		if (updated == 0)
+			return null;
+		var noteUpdated = this.getNoteById(noteId);
+		this.publisher.publishEvent(new NoteUpdatedEvent(noteUpdated));
+		return noteUpdated;
+	}
+
+	@Override
+	public Note fillTitle(Long mogulId, Long noteId, String title) {
+		Assert.hasText(title, "the title must have text");
+		var updated = this.db.sql("""
+				update note set title = ?
+				where id = ? and mogul_id = ? and (title is null or btrim(title, E' \\t\\r\\n') = '')
+				""") //
+			.params(title.strip(), noteId, mogulId) //
+			.update();
+		if (updated == 0)
+			return null;
+		var noteUpdated = this.getNoteById(noteId);
+		this.publisher.publishEvent(new NoteUpdatedEvent(noteUpdated));
+		return noteUpdated;
+	}
+
 	private static String blankToNull(String s) {
 		return s == null || s.isBlank() ? null : s.strip();
 	}

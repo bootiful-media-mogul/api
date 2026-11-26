@@ -3,7 +3,10 @@ package com.joshlong.mogul.api.notes;
 import com.joshlong.mogul.api.Notable;
 import com.joshlong.mogul.api.Note;
 
+import org.springframework.util.DigestUtils;
+
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Map;
 
@@ -51,5 +54,32 @@ public interface NoteService {
 	<T extends Notable> Note update(Long mogulId, Long noteId, T notable, URI url, String title, String note);
 
 	Note setDone(Long mogulId, Long noteId, boolean done);
+
+	/**
+	 * a summary of the page at a note's url: it becomes the note's text if the note has
+	 * none, and goes under the text if it has some. it's only written if the note's text
+	 * is still what it was when the summary was asked for -- see
+	 * {@link #textHash(String)} -- so a summary can't be written twice, or land on an
+	 * edit it never saw.
+	 * @return the updated note, or {@code null} if the mogul has no such note, or its
+	 * text has changed
+	 */
+	Note appendSummary(Long mogulId, Long noteId, String textHash, String summary);
+
+	/**
+	 * gives a note with no title this one. a note that has a title -- the clipper's, or
+	 * one somebody typed -- keeps it.
+	 * @return the updated note, or {@code null} if the mogul has no such note, or it
+	 * already has a title
+	 */
+	Note fillTitle(Long mogulId, Long noteId, String title);
+
+	/**
+	 * the hash of a note's text that {@link #appendSummary(Long, Long, String, String)}
+	 * compares. it's the same as PostgreSQL's {@code md5(note)}.
+	 */
+	static String textHash(String note) {
+		return DigestUtils.md5DigestAsHex((note == null ? "" : note).getBytes(StandardCharsets.UTF_8));
+	}
 
 }
