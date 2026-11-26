@@ -133,6 +133,8 @@ class DefaultPublicationService extends AbstractDomainService<Publishable, Publi
 			PublisherPlugin<T> plugin, @Nullable Instant when) {
 		Assert.notNull(plugin, "the plugin must not be null");
 		Assert.notNull(payload, "the payload must not be null");
+		Assert.state(when == null || plugin.schedulable(),
+				"the plugin named [" + plugin.name() + "] can't be scheduled, only published now");
 		this.mogulService.assertAuthorizedMogul(mogulId);
 		var configuration = this.settingsLookup.apply(new SettingsLookup(mogulId, plugin.name()));
 		var context = new HashMap<String, String>();

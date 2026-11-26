@@ -36,6 +36,12 @@ type Attachment {
     markdown: String
 }
 
+type PublisherPlugin {
+    name: String
+    publishableType: String
+    schedulable: Boolean
+}
+
 type Publication {
     mogulId: Int
     id: Int
@@ -419,6 +425,9 @@ type Query {
     # every publication of the mogul's, of every publishable, that went out (or is due to) in [from, to)
     publicationsBetween( from: DateTime, to: DateTime ) : [Publication]
     canPublish (publishableId: Int , publishableType: String , contextJson: String , plugin: String) : Boolean
+    # the plugins that publish the given kind of publishable (all of them, if it's not given), and
+    # whether each can be scheduled. the type each serves is inferred from the plugin itself
+    publisherPlugins( publishableType: String ) : [PublisherPlugin]
 
     # compositions
     compositionById ( compositionId:Int) : Composition

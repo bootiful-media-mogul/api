@@ -31,6 +31,12 @@ class AudioFileDownloadingPublisherPlugin implements PodcastEpisodePublisherPlug
 		return PLUGIN_NAME;
 	}
 
+	// a download is for right now: the user is waiting on the file
+	@Override
+	public boolean schedulable() {
+		return false;
+	}
+
 	@Override
 	public boolean canPublish(PublishContext<Episode> context) {
 		return PodcastEpisodePublisherPlugin.super.canPublish(context) && context.payload().complete();

@@ -29,7 +29,7 @@ class DomainAotConfiguration {
 			for (var beanName : beanFactory.getBeanDefinitionNames()) {
 				var type = beanFactory.getType(beanName);
 				if (type != null) {
-					var bases = Set.of(AbstractDomainService.class, DomainResolver.class);
+					var bases = Set.of(AbstractDomainService.class, DomainResolver.class, PublisherPlugin.class);
 					for (var base : bases) {
 						if (base.isAssignableFrom(type)) {
 							classesSet.add(type);

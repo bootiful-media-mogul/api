@@ -44,6 +44,18 @@ public interface PublisherPlugin<T extends Publishable> {
 		return isConfigurationValid(publishContext.context()) && publishContext.payload() != null;
 	}
 
+	/**
+	 * whether a publication through this plugin may be asked for at a later time. most
+	 * can: every publication runs on jobrunr, now or later, the same way. the ones that
+	 * can't are those whose result the user is waiting on right now, like a download.
+	 * clients read this (through the {@code publisherPlugins} query) to decide whether to
+	 * offer scheduling, and the publication service refuses a schedule for a plugin that
+	 * says no.
+	 */
+	default boolean schedulable() {
+		return true;
+	}
+
 	void publish(PublishContext<T> publishContext);
 
 	boolean unpublish(UnpublishContext<T> uc);

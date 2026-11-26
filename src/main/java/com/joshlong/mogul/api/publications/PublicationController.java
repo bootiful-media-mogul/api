@@ -7,10 +7,13 @@ import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.settings.Settings;
 import com.joshlong.mogul.utils.DateUtils;
 import com.joshlong.mogul.utils.JsonUtils;
+import com.joshlong.mogul.utils.TypeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.aop.framework.AopProxyUtils;
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.core.ResolvableType;
 import org.springframework.graphql.data.method.annotation.*;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.Assert;
@@ -18,6 +21,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,7 +29,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Controller
-@RegisterReflectionForBinding(PublishableReference.class)
+@RegisterReflectionForBinding({ PublishableReference.class, PublisherPluginDescriptor.class })
 class PublicationController<T extends Publishable> {
 
 	private final Logger log = LoggerFactory.getLogger(getClass());
@@ -38,12 +42,46 @@ class PublicationController<T extends Publishable> {
 
 	private final Map<String, PublisherPlugin<T>> plugins = new ConcurrentHashMap<>();
 
+	private final List<PublisherPluginDescriptor> descriptors;
+
 	PublicationController(Settings settings, PublicationService publicationService, MogulService mogulService,
 			Map<String, PublisherPlugin<?>> plugins) {
 		this.publicationService = publicationService;
 		this.mogulService = mogulService;
 		this.settings = settings;
 		plugins.forEach((k, v) -> this.plugins.put(k, (PublisherPlugin<T>) v));
+		this.descriptors = plugins.entrySet()
+			.stream()
+			.map(e -> describe(e.getKey(), e.getValue()))
+			.sorted(Comparator.comparing(PublisherPluginDescriptor::name))
+			.toList();
+	}
+
+	/**
+	 * what a client needs to know about a plugin to offer it: the kind of publishable it
+	 * publishes, inferred from the plugin's type ({@code PublisherPlugin<Episode>} is for
+	 * {@code episode}s), and whether it can be scheduled.
+	 */
+	static PublisherPluginDescriptor describe(String name, PublisherPlugin<?> plugin) {
+		var publishableClass = ResolvableType.forClass(AopProxyUtils.ultimateTargetClass(plugin))
+			.as(PublisherPlugin.class)
+			.getGeneric(0)
+			.resolve();
+		Assert.state(publishableClass != null,
+				"couldn't work out what kind of publishable the plugin named [" + name + "] publishes");
+		return new PublisherPluginDescriptor(name, TypeUtils.typeName(publishableClass), plugin.schedulable());
+	}
+
+	/**
+	 * the plugins that can publish the given kind of publishable, or all of them if none
+	 * is given, so a client needn't hardcode which plugins go with which publishable or
+	 * which of them can be scheduled.
+	 */
+	@QueryMapping
+	Collection<PublisherPluginDescriptor> publisherPlugins(@Argument String publishableType) {
+		if (!StringUtils.hasText(publishableType))
+			return this.descriptors;
+		return this.descriptors.stream().filter(d -> d.publishableType().equals(publishableType)).toList();
 	}
 
 	@QueryMapping

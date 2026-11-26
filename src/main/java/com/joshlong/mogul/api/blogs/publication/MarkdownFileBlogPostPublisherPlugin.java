@@ -40,6 +40,12 @@ class MarkdownFileBlogPostPublisherPlugin implements BlogPostPublisherPlugin {
 		return PLUGIN_NAME;
 	}
 
+	// a download is for right now: the user is waiting on the file
+	@Override
+	public boolean schedulable() {
+		return false;
+	}
+
 	@Override
 	public void publish(PublishContext<Post> publishContext) {
 		var postId = publishContext.payload().id();
