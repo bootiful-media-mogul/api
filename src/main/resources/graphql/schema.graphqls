@@ -399,9 +399,10 @@ type Query {
     # blogs
     blogById(blogId: Int) : Blog
     blogs: [Blog]
-    # every post, or with a limit, that many of the newest: the clip apps' post picker,
-    # which finds older ones with search(query, metadata: {type: "post", blogId: ...})
-    blogPostsByBlog (blogId: Int, limit: Int) : [Post]
+    # every post, newest first. with a limit and/or offset, one page of them: offset skips that
+    # many of the newest, limit takes that many after it. the clip apps' post picker, which finds
+    # older ones with search(query, metadata: {type: "post", blogId: ...})
+    blogPostsByBlog (blogId: Int, limit: Int, offset: Int) : [Post]
     postById(postId: Int) : Post
 
 
@@ -465,10 +466,10 @@ type Query {
     podcasts: [Podcast]
     podcastEpisodeById(podcastEpisodeId:Int):Episode
     podcastEpisodeSegmentById(podcastEpisodeSegmentId:Int):Segment
-    # every episode, or with a limit, that many of the newest, without segments: the clip
-    # apps' picker, which finds older ones with search(query, metadata: {type: "segment",
-    # podcastId: ...})
-    podcastEpisodesByPodcast(podcastId:Int, limit: Int):[Episode]
+    # every episode, newest first, without segments. with a limit and/or offset, one page of them:
+    # offset skips that many of the newest, limit takes that many after it. the clip apps' picker,
+    # which finds older ones with search(query, metadata: {type: "segment", podcastId: ...})
+    podcastEpisodesByPodcast(podcastId:Int, limit: Int, offset: Int):[Episode]
 
     # managedFiles
     managedFileById( managedFileId: Int) : ManagedFile

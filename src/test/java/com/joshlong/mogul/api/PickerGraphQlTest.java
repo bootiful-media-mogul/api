@@ -17,6 +17,7 @@ import org.springframework.web.context.WebApplicationContext;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -36,10 +37,10 @@ class PickerGraphQlTest {
 	private static final String INTRUDER = "picker-graphql-test|intruder";
 
 	private static final String POSTS = """
-			query($id:Int,$limit:Int){ blogPostsByBlog(blogId:$id, limit:$limit) { id title created } }""";
+			query($id:Int,$limit:Int,$offset:Int){ blogPostsByBlog(blogId:$id, limit:$limit, offset:$offset) { id title created } }""";
 
 	private static final String EPISODES = """
-			query($id:Int,$limit:Int){ podcastEpisodesByPodcast(podcastId:$id, limit:$limit) { id title created } }""";
+			query($id:Int,$limit:Int,$offset:Int){ podcastEpisodesByPodcast(podcastId:$id, limit:$limit, offset:$offset) { id title created } }""";
 
 	@Autowired
 	private WebApplicationContext context;
@@ -89,6 +90,30 @@ class PickerGraphQlTest {
 	}
 
 	@Test
+	void consecutivePagesOfPostsAreDisjointAndTogetherTheFirstRows() {
+		var blogId = this.biggestBlog();
+		var first = this.list(this.owner, POSTS, "blogPostsByBlog", blogId, 2, 0);
+		var second = this.list(this.owner, POSTS, "blogPostsByBlog", blogId, 2, 2);
+		var prefix = this.list(this.owner, POSTS, "blogPostsByBlog", blogId, 4, null);
+		this.assertNewestFirst(first);
+		this.assertNewestFirst(second);
+		Assertions.assertEquals(prefix.stream().map(this::id).toList(),
+				Stream.concat(first.stream(), second.stream()).map(this::id).toList(),
+				"two pages of two are the first four posts, in order");
+	}
+
+	@Test
+	void aPageBeyondTheEndOfPostsIsEmpty() {
+		var blogId = this.biggestBlog();
+		var all = this.db.sql("select count(*) from blog_post where blog_id = ?")
+			.param(blogId)
+			.query(Long.class)
+			.single();
+		Assertions.assertTrue(this.list(this.owner, POSTS, "blogPostsByBlog", blogId, 10, all.intValue()).isEmpty(),
+				"an offset past the last post gives no posts");
+	}
+
+	@Test
 	void everyPostIsStillThereWithoutALimit() {
 		var blogId = this.biggestBlog();
 		var all = this.db.sql("select count(*) from blog_post where blog_id = ?")
@@ -121,11 +146,37 @@ class PickerGraphQlTest {
 	}
 
 	@Test
+	void consecutivePagesOfEpisodesAreDisjointAndTogetherTheFirstRows() {
+		var podcastId = this.ownerId("select p.id from podcast p where p.mogul_id = ? order by p.id limit 1");
+		var a = this.podcastService.createPodcastEpisodeDraft(this.ownerId, podcastId, "picker page a", "");
+		var b = this.podcastService.createPodcastEpisodeDraft(this.ownerId, podcastId, "picker page b", "");
+		var c = this.podcastService.createPodcastEpisodeDraft(this.ownerId, podcastId, "picker page c", "");
+		try {
+			var all = this.list(this.owner, EPISODES, "podcastEpisodesByPodcast", podcastId, null);
+			this.assertNewestFirst(all);
+			var ids = all.stream().map(this::id).toList();
+			Assertions.assertTrue(ids.size() >= 4, "the podcast has at least four episodes to page through");
+			var first = this.list(this.owner, EPISODES, "podcastEpisodesByPodcast", podcastId, 2, 0);
+			var second = this.list(this.owner, EPISODES, "podcastEpisodesByPodcast", podcastId, 2, 2);
+			Assertions.assertEquals(ids.subList(0, 2), first.stream().map(this::id).toList(),
+					"the first page is the newest two, as the full list has them");
+			Assertions.assertEquals(ids.subList(2, 4), second.stream().map(this::id).toList(),
+					"the second page is the next two, as the full list has them");
+		}
+		finally {
+			this.podcastService.deletePodcastEpisode(a.id());
+			this.podcastService.deletePodcastEpisode(b.id());
+			this.podcastService.deletePodcastEpisode(c.id());
+		}
+	}
+
+	@Test
 	void anotherMogulCannotListMyPostsOrEpisodes() {
 		var blogId = this.biggestBlog();
 		this.intruder.document(POSTS)
 			.variable("id", blogId)
 			.variable("limit", 100)
+			.variable("offset", 0)
 			.execute()
 			.errors()
 			.satisfy(errors -> Assertions.assertFalse(errors.isEmpty(), "my posts must not be listed for others"));
@@ -133,6 +184,7 @@ class PickerGraphQlTest {
 		this.intruder.document(EPISODES)
 			.variable("id", podcastId)
 			.variable("limit", 100)
+			.variable("offset", 0)
 			.execute()
 			.errors()
 			.satisfy(errors -> Assertions.assertFalse(errors.isEmpty(), "my episodes must not be listed for others"));
@@ -156,12 +208,18 @@ class PickerGraphQlTest {
 		return ((Number) item.get("id")).longValue();
 	}
 
-	@SuppressWarnings("unchecked")
 	private List<Map<String, Object>> list(HttpGraphQlTester tester, String document, String field, Long id,
 			Integer limit) {
+		return this.list(tester, document, field, id, limit, null);
+	}
+
+	@SuppressWarnings("unchecked")
+	private List<Map<String, Object>> list(HttpGraphQlTester tester, String document, String field, Long id,
+			Integer limit, Integer offset) {
 		return tester.document(document)
 			.variable("id", id)
 			.variable("limit", limit)
+			.variable("offset", offset)
 			.execute()
 			.path(field)
 			.entityList(Map.class)

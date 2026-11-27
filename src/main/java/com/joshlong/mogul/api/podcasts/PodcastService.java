@@ -1,6 +1,6 @@
 package com.joshlong.mogul.api.podcasts;
 
-import org.jspecify.annotations.Nullable;
+import com.joshlong.mogul.api.Paging;
 import com.joshlong.mogul.api.compositions.Composition;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
 
@@ -72,10 +72,10 @@ public interface PodcastService {
 	Collection<Episode> getPodcastEpisodesByPodcast(Long podcastId, boolean deep);
 
 	/**
-	 * the podcast's newest episodes, without their segments: at most {@code limit} of
-	 * them, or all of them for a {@literal null} limit.
+	 * the podcast's newest episodes, without their segments: one page of them as
+	 * {@code paging} describes, or all of them when it has no paging.
 	 */
-	Collection<Episode> getNewestPodcastEpisodes(Long podcastId, @Nullable Integer limit);
+	Collection<Episode> getNewestPodcastEpisodes(Long podcastId, Paging paging);
 
 	Podcast createPodcast(Long mogulId, String title);
 

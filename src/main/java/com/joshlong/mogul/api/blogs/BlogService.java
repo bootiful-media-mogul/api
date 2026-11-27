@@ -1,9 +1,8 @@
 package com.joshlong.mogul.api.blogs;
 
+import com.joshlong.mogul.api.Paging;
 import com.joshlong.mogul.api.compositions.Composition;
 import com.joshlong.mogul.api.managedfiles.ManagedFile;
-
-import org.jspecify.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Date;
@@ -20,10 +19,10 @@ public interface BlogService {
 	Collection<Post> getVisiblePostsForBlog(long blogId);
 
 	/**
-	 * the blog's newest posts, at most {@code limit} of them, or all of them for a
-	 * {@literal null} limit.
+	 * the blog's newest posts, one page of them as {@code paging} describes, or all of
+	 * them when it has no paging.
 	 */
-	Collection<Post> getNewestPostsForBlog(long blogId, @Nullable Integer limit);
+	Collection<Post> getNewestPostsForBlog(long blogId, Paging paging);
 
 	void deletePost(Long postId);
 

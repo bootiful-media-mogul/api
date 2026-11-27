@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.blogs;
 
+import com.joshlong.mogul.api.Paging;
 import com.joshlong.mogul.api.compositions.Composition;
 import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.notifications.NotificationEvent;
@@ -72,9 +73,9 @@ class BlogController {
 	}
 
 	@QueryMapping
-	Collection<Post> blogPostsByBlog(@Argument Long blogId, @Argument Integer limit) {
+	Collection<Post> blogPostsByBlog(@Argument Long blogId, @Argument Integer limit, @Argument Integer offset) {
 		this.ownedBlog(blogId);
-		return this.service.getNewestPostsForBlog(blogId, limit);
+		return this.service.getNewestPostsForBlog(blogId, Paging.of(limit, offset));
 	}
 
 	@MutationMapping

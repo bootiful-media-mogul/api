@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.blogs;
 
+import com.joshlong.mogul.api.Paging;
 import com.joshlong.mogul.api.SearchableDeletedEvent;
 import com.joshlong.mogul.api.ai.AiClient;
 import com.joshlong.mogul.api.compositions.Composition;
@@ -115,14 +116,11 @@ class DefaultBlogService implements BlogService {
 	}
 
 	@Override
-	public Collection<Post> getNewestPostsForBlog(long blogId, @Nullable Integer limit) {
+	public Collection<Post> getNewestPostsForBlog(long blogId, Paging paging) {
 		var params = new ArrayList<Object>();
 		params.add(blogId);
-		var sql = POST_SELECT + " where bp.blog_id = ? order by bp.created desc, bp.id desc ";
-		if (limit != null) {
-			sql += " limit ? ";
-			params.add(limit);
-		}
+		params.addAll(paging.params());
+		var sql = POST_SELECT + " where bp.blog_id = ? order by bp.created desc, bp.id desc " + paging.sql();
 		return this.db //
 			.sql(sql) //
 			.params(params) //

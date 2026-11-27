@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.podcasts;
 
+import com.joshlong.mogul.api.Paging;
 import com.joshlong.mogul.api.Transcript;
 import com.joshlong.mogul.api.cleanvoice.CleanvoiceSettings;
 import com.joshlong.mogul.api.compositions.Composition;
@@ -51,13 +52,16 @@ class PodcastController {
 
 	@QueryMapping
 	Collection<Episode> podcastEpisodesByPodcast(@Argument Long podcastId, @Argument Integer limit,
-			DataFetchingEnvironment dataFetchingEnvironment) {
+			@Argument Integer offset, DataFetchingEnvironment dataFetchingEnvironment) {
 		var graphic = isFieldRequested(dataFetchingEnvironment, "graphic");
 		var segments = isFieldRequested(dataFetchingEnvironment, "segments");
 		this.ownedPodcast(podcastId);
-		// the clip apps' pickers: a page of the newest, never the segments
-		if (limit != null)
-			return this.podcastService.getNewestPodcastEpisodes(podcastId, limit);
+		var paging = Paging.of(limit, offset);
+		// the clip apps' pickers and the paged episodes screen: a page of the newest,
+		// never the
+		// segments
+		if (paging.paged())
+			return this.podcastService.getNewestPodcastEpisodes(podcastId, paging);
 		return this.podcastService.getPodcastEpisodesByPodcast(podcastId, graphic && segments);
 	}
 
