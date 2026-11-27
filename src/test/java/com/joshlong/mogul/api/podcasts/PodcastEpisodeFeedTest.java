@@ -63,7 +63,8 @@ class PodcastEpisodeFeedTest {
 	void feed() throws Exception {
 		var mogulId = 1L;
 		var podcastId = 1L;
-		var mogul = new Mogul(mogulId, "jlong", "josh@joshlong.com", "clientId", "Josh", "Long", new Date(), "UTC");
+		var mogul = new Mogul(mogulId, "jlong", "josh@joshlong.com", "clientId", "Josh", "Long", new Date(), "UTC",
+				null);
 		var podcast = new Podcast(mogul.id(), podcastId, "the title", new Date());
 		var sharedEverywhere = nextEpisode(mogulId, podcastId, true);
 		var blogged = nextEpisode(mogulId, podcastId, true);
@@ -109,7 +110,7 @@ class PodcastEpisodeFeedTest {
 
 	@Test
 	void browsersOnOtherSitesCanReadTheFeed() throws Exception {
-		var mogul = new Mogul(1L, "jlong", "josh@joshlong.com", "clientId", "Josh", "Long", new Date(), "UTC");
+		var mogul = new Mogul(1L, "jlong", "josh@joshlong.com", "clientId", "Josh", "Long", new Date(), "UTC", null);
 		when(this.mogulService.getMogulById(1L)).thenReturn(mogul);
 		when(this.podcastService.getPodcastById(1L)).thenReturn(new Podcast(1L, 1L, "the title", new Date()));
 		when(this.podcastService.getPodcastEpisodesByPodcast(1L, true)).thenReturn(List.of());

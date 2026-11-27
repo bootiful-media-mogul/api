@@ -30,12 +30,20 @@ class MogulController {
 		// null until the mogul tells us; the client uses that to decide whether to offer
 		// up the zone its browser reports.
 		map.put("timeZone", mogulByName.timeZone());
+		// null until the mogul picks one; the client adopts its own when this is empty.
+		map.put("language", mogulByName.language());
 		return map;
 	}
 
 	@MutationMapping
 	boolean setMogulTimeZone(@Argument String timeZone) {
 		this.mogulService.setTimeZone(this.mogulService.getCurrentMogul().id(), timeZone);
+		return true;
+	}
+
+	@MutationMapping
+	boolean setMogulLanguage(@Argument String language) {
+		this.mogulService.setLanguage(this.mogulService.getCurrentMogul().id(), language);
 		return true;
 	}
 

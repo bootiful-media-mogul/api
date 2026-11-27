@@ -233,6 +233,11 @@ class DefaultBlogService implements BlogService {
 
 	@Override
 	public String summarize(String content) {
+		return this.summarize(content, null);
+	}
+
+	@Override
+	public String summarize(String content, String language) {
 		var prompt = """
 				Please summarize the text following the line. Reply with only the summary, and no other text:
 				================================================================================================
@@ -241,7 +246,7 @@ class DefaultBlogService implements BlogService {
 
 				""";
 		return this.singularity //
-			.chat(prompt.formatted(content)) //
+			.chat(prompt.formatted(content), language) //
 			.trim();
 	}
 

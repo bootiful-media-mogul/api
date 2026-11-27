@@ -1,6 +1,7 @@
 package com.joshlong.mogul.api.notes;
 
 import com.joshlong.mogul.api.Note;
+import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.notifications.NotificationEvent;
 import com.joshlong.mogul.api.notifications.NotificationEvents;
 import com.joshlong.mogul.api.processors.ProcessorCompletedEvent;
@@ -102,10 +103,14 @@ class NoteSummaries {
 
 	private final NoteSummarizer summarizer;
 
-	NoteSummaries(NoteService noteService, Processors processors, NoteSummarizer summarizer) {
+	private final MogulService mogulService;
+
+	NoteSummaries(NoteService noteService, Processors processors, NoteSummarizer summarizer,
+			MogulService mogulService) {
 		this.noteService = noteService;
 		this.processors = processors;
 		this.summarizer = summarizer;
+		this.mogulService = mogulService;
 	}
 
 	/**
@@ -178,7 +183,7 @@ class NoteSummaries {
 		String summary;
 		try {
 			summary = this.summarizer.summarize((String) context.get(PAGE_TITLE), URI.create((String) context.get(URL)),
-					(String) context.get(PAGE_TEXT));
+					(String) context.get(PAGE_TEXT), this.languageOf((Long) context.get(MOGUL_ID)));
 		} //
 		catch (RuntimeException e) {
 			this.log.warn("couldn't summarize the page for {}", reply, e);
@@ -198,6 +203,14 @@ class NoteSummaries {
 	}
 
 	/**
+	 * the language the mogul's system is set to, or null if they haven't chosen one,
+	 * which leaves the model to write in the language the page or note is in.
+	 */
+	private String languageOf(Long mogulId) {
+		return this.mogulService.getMogulById(mogulId).language();
+	}
+
+	/**
 	 * a title for a clip that came without one -- a url shared from a phone, say -- made
 	 * from its text, now that it has some. a clip with a title keeps it, and a title that
 	 * can't be made costs the clip nothing but the title.
@@ -207,7 +220,7 @@ class NoteSummaries {
 		if (StringUtils.hasText(note.title()))
 			return null;
 		try {
-			var title = this.summarizer.title(note.note());
+			var title = this.summarizer.title(note.note(), this.languageOf(note.mogulId()));
 			return this.noteService.fillTitle(note.mogulId(), note.id(), title) == null ? null : title;
 		} //
 		catch (RuntimeException e) {

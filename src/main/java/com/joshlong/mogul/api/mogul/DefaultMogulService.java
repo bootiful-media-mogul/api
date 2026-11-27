@@ -24,6 +24,7 @@ import org.springframework.web.client.RestClient;
 import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 @Transactional
@@ -190,6 +191,18 @@ class DefaultMogulService implements MogulService {
 		// junk value can't make today() throw on every subsequent request.
 		var zone = ZoneId.of(timeZone);
 		this.db.sql("update mogul set time_zone = ? where id = ?").params(zone.getId(), mogulId).update();
+		this.evictMogulFromCaches(mogulId);
+		return this.getMogulById(mogulId);
+	}
+
+	@Override
+	public Mogul setLanguage(Long mogulId, String language) {
+		this.assertAuthorizedMogul(mogulId);
+		// a well-formed BCP 47 tag, stored in its normalised form. anything else would be
+		// spliced into every prompt for this mogul, so it is refused here instead.
+		var locale = Locale.forLanguageTag(language == null ? "" : language.trim());
+		Assert.hasText(locale.getLanguage(), "the language [" + language + "] is not a language tag");
+		this.db.sql("update mogul set language = ? where id = ?").params(locale.toLanguageTag(), mogulId).update();
 		this.evictMogulFromCaches(mogulId);
 		return this.getMogulById(mogulId);
 	}

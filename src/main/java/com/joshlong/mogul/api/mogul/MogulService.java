@@ -23,4 +23,11 @@ public interface MogulService {
 	 */
 	Mogul setTimeZone(Long mogulId, String timeZone);
 
+	/**
+	 * records the language the mogul's system is written in, as a BCP 47 tag ({@code es},
+	 * {@code fr-CA}). every prompt sent to the model for this mogul asks for its answer
+	 * in this language, so it is stored on the account rather than read off the device.
+	 */
+	Mogul setLanguage(Long mogulId, String language);
+
 }

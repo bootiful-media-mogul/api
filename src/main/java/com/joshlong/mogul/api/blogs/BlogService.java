@@ -42,6 +42,12 @@ public interface BlogService {
 
 	String summarize(String content);
 
+	/**
+	 * summarizes the content in the language given as a BCP 47 tag. a null language
+	 * leaves the model's default in place.
+	 */
+	String summarize(String content, String language);
+
 	Post updatePost(Long postId, Date publishedAt, String title, String content, String summary, String rssSlug);
 
 	Post createPost(Long blogId, Date published, String title, String content, String summary);

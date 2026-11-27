@@ -45,8 +45,8 @@ class NotesController {
 	 */
 	@QueryMapping
 	String noteTitle(@Argument String description) {
-		this.mogulService.getCurrentMogul();
-		return StringUtils.hasText(description) ? this.noteSummarizer.title(description) : null;
+		var mogul = this.mogulService.getCurrentMogul();
+		return StringUtils.hasText(description) ? this.noteSummarizer.title(description, mogul.language()) : null;
 	}
 
 	@MutationMapping

@@ -1,6 +1,8 @@
 package com.joshlong.mogul.api.notes;
 
 import com.joshlong.mogul.api.Note;
+import com.joshlong.mogul.api.mogul.Mogul;
+import com.joshlong.mogul.api.mogul.MogulService;
 import com.joshlong.mogul.api.notifications.NotificationEvent;
 import com.joshlong.mogul.api.notifications.NotificationEvents;
 import com.joshlong.mogul.api.processors.ProcessorCompletedEvent;
@@ -9,6 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -26,6 +29,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,7 +70,15 @@ class NoteSummariesTest {
 	private final NoteSummaries summaries = new NoteSummaries(this.notes, (processorId, context) -> {
 		assertThat(processorId).isEqualTo(NoteSummaries.PROCESSOR_ID);
 		this.requests.add(context);
-	}, new NoteSummarizer(this.model));
+	}, new NoteSummarizer(this.model), this.mogulService());
+
+	private MogulService mogulService() {
+		var mogulService = Mockito.mock(MogulService.class);
+		Mockito.when(mogulService.getMogulById(Mockito.anyLong()))
+			.thenAnswer(invocation -> new Mogul(invocation.getArgument(0), "jlong", "josh@joshlong.com", "clientId",
+					"Josh", "Long", new Date(), "UTC", null));
+		return mogulService;
+	}
 
 	private Long mogulId;
 

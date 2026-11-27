@@ -12,7 +12,7 @@ import java.util.Date;
  * accumulate without bound. publish a {@link MogulStatus} instead.
  */
 public record Mogul(Long id, String username, String email, String clientId, String givenName, String familyName,
-		Date updated, String timeZone) implements Notable {
+		Date updated, String timeZone, String language) implements Notable {
 
 	@Override
 	public Long notableKey() {

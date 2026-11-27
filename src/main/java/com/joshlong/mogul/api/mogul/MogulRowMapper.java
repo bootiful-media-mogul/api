@@ -14,7 +14,7 @@ class MogulRowMapper implements RowMapper<Mogul> {
 		// Mogul.updated() today, which is the only reason that has been invisible.
 		return new Mogul(rs.getLong("id"), rs.getString("username"), rs.getString("email"), rs.getString("client_id"),
 				rs.getString("given_name"), rs.getString("family_name"), rs.getTimestamp("updated"),
-				rs.getString("time_zone"));
+				rs.getString("time_zone"), rs.getString("language"));
 	}
 
 }

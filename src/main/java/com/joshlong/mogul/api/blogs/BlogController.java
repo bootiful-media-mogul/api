@@ -90,7 +90,7 @@ class BlogController {
 
 	@MutationMapping
 	String summarize(@Argument String content) {
-		return this.service.summarize(content);
+		return this.service.summarize(content, this.mogulService.getCurrentMogul().language());
 	}
 
 	@QueryMapping

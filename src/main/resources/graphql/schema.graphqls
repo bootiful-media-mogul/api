@@ -105,6 +105,8 @@ type Mogul {
     email : String
     # IANA zone id; null until the mogul has told us where they are
     timeZone : String
+    # BCP 47 language tag the mogul's system is written in (es, fr-CA); null means the model's default
+    language : String
 }
 
 # a single day in the life of a Mogul, and the thing that actually gets published
@@ -346,6 +348,7 @@ type Mutation {
 
     # mogul
     setMogulTimeZone( timeZone: String ) : Boolean
+    setMogulLanguage( language: String ) : Boolean
 
     # publicationService
     unpublish( publicationId: Int ) : Boolean

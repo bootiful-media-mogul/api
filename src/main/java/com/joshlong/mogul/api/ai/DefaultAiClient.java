@@ -7,8 +7,10 @@ import org.springframework.ai.image.ImageOptionsBuilder;
 import org.springframework.ai.image.ImagePrompt;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
+import org.springframework.util.StringUtils;
 
 import java.net.MalformedURLException;
+import java.util.Locale;
 import java.util.Objects;
 
 class DefaultAiClient implements AiClient {
@@ -25,6 +27,16 @@ class DefaultAiClient implements AiClient {
 	@Override
 	public String chat(String prompt) {
 		return this.aiClient.prompt().user(prompt).call().content();
+	}
+
+	@Override
+	public String chat(String prompt, String language) {
+		if (!StringUtils.hasText(language))
+			return this.chat(prompt);
+		var name = Locale.forLanguageTag(language).getDisplayLanguage(Locale.ENGLISH);
+		var instruction = "Write your entire answer in " + (StringUtils.hasText(name) ? name : language)
+				+ ", the language the user's system is set to.";
+		return this.aiClient.prompt().system(instruction).user(prompt).call().content();
 	}
 
 	@Override
