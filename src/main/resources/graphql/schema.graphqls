@@ -254,6 +254,29 @@ type Note {
     done: DateTime
 }
 
+# the most compelling parts of an episode's or a post's text
+type Analysis {
+    type: String
+    analyzableId: Int
+    created: DateTime
+    # best first
+    highlights: [Highlight]
+}
+
+type Highlight {
+    # "entertaining", "useful" or "quotable"
+    kind: String
+    # word for word from the text
+    quote: String
+    reason: String
+    # 1 to 10
+    score: Int
+    # the key of the part of the text the quote is in: for an episode, the id of its segment
+    section: String
+    # what that part was called when it was analyzed (an episode's segment's name), or null
+    sectionName: String
+}
+
 type EntityContext {
     resolvedType :String
     context :String
@@ -336,6 +359,11 @@ type Mutation {
     # reads the page at the url and summarizes it, for the note editor. the summary comes later, in a
     # page-summarized-event notification whose key is what this returns
     summarizePage(url:String): String
+
+    # analysis
+    # asks for the most compelling parts of an "episode" or a "post" to be found. the analysis comes later:
+    # an analysis-completed-event notification keyed by "type:id" says when. false if there's no text yet
+    analyze(type:String, id:Int): Boolean
 
 
     # jobs
@@ -429,6 +457,10 @@ type Query {
     notesForUrl(url:String): [Note]
     # a title for a note with this text, written by the model
     noteTitle(description:String): String
+
+    # analysis
+    # the analysis of an "episode" or a "post", or null if it's never been analyzed
+    analysis(type:String, id:Int): Analysis
 
     # publicationService
     publicationsForPublishable( type : String, id: Int ) : [Publication]

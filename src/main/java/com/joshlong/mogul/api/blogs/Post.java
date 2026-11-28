@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.blogs;
 
+import com.joshlong.mogul.api.Analyzable;
 import com.joshlong.mogul.api.Notable;
 import com.joshlong.mogul.api.Publishable;
 import com.joshlong.mogul.api.Searchable;
@@ -11,7 +12,7 @@ import java.util.Map;
 
 public record Post(Long mogulId, Long id, String title, Date created, String content, boolean complete, boolean visible,
 		Map<String, ManagedFile> assets, String summary, String rssSlug,
-		Long blogId) implements Notable, Searchable, Publishable, Composable {
+		Long blogId) implements Notable, Searchable, Publishable, Composable, Analyzable {
 
 	@Override
 	public Long publishableId() {
@@ -32,4 +33,10 @@ public record Post(Long mogulId, Long id, String title, Date created, String con
 	public Long compositionKey() {
 		return this.id;
 	}
+
+	@Override
+	public Long analyzableKey() {
+		return this.id;
+	}
+
 }

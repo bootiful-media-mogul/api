@@ -1,5 +1,6 @@
 package com.joshlong.mogul.api.podcasts;
 
+import com.joshlong.mogul.api.Analyzable;
 import com.joshlong.mogul.api.Notable;
 import com.joshlong.mogul.api.Publishable;
 import com.joshlong.mogul.api.compositions.Composable;
@@ -9,7 +10,7 @@ import java.util.Date;
 
 public record Episode(Long id, Long podcastId, String title, String description, Date created, ManagedFile graphic,
 		ManagedFile producedGraphic, ManagedFile producedAudio, boolean complete, Date producedAudioUpdated,
-		Date producedAudioAssetsUpdated) implements Notable, Publishable, Composable {
+		Date producedAudioAssetsUpdated) implements Notable, Publishable, Composable, Analyzable {
 
 	@Override
 	public Long publishableId() {
@@ -25,4 +26,10 @@ public record Episode(Long id, Long podcastId, String title, String description,
 	public Long notableKey() {
 		return this.id();
 	}
+
+	@Override
+	public Long analyzableKey() {
+		return this.id();
+	}
+
 }
